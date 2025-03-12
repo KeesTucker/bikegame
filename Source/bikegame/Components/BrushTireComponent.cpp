@@ -1,7 +1,8 @@
 #include "BrushTireComponent.h"
 #include "GameFramework/Actor.h"
 
-UBrushTireComponent::UBrushTireComponent(): WheelMesh(nullptr)
+UBrushTireComponent::UBrushTireComponent(): WheelMesh(nullptr), AxleConstraint(nullptr), RimRadius(0), RimWidth(0),
+    TireWidth(0), TireSidewallHeight(0), BristleRadialStiffness(0)
 {
     PrimaryComponentTick.bCanEverTick = true;
     Fx = 0.0f;
@@ -13,86 +14,135 @@ UBrushTireComponent::UBrushTireComponent(): WheelMesh(nullptr)
 void UBrushTireComponent::BeginPlay()
 {
     Super::BeginPlay();
-
-    RimRadius = RimDiameterInches * InchToCm * 0.5;
-    RimWidth = RimWidthInches * InchToCm;
-    TireWidth = TireWidthMm * MmToCm;
+    
+    RimRadius = RimDiameterInches * InchTocm * 0.5;
+    RimWidth = RimWidthInches * InchTocm;
+    TireWidth = TireWidthMm * mmTocm;
     TireSidewallHeight = TireWidth * (TireAspectRatio / 100);
+    BristleRadialStiffness = RadialDeflectionStiffness / BrushSegmentsPerWheel / BrushSegmentsPerWheel;
+
+    SetActive(true);
+    SetAsyncPhysicsTickEnabled(true);
     
     // Start brush model thread
     //BThreadRunning = true;
     //BrushThread = std::thread(&UBrushTireComponent::RunBrushModel, this);
 }
 
+void UBrushTireComponent::PostInitProperties()
+{
+    Super::PostInitProperties();
+    
+    
+}
+
 void UBrushTireComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+}
 
-    if (WheelMesh && GetWorld())
+void UBrushTireComponent::AsyncPhysicsTickComponent(float DeltaTime, float SimTime)
+{
+    Super::AsyncPhysicsTickComponent(DeltaTime, SimTime);
+
+    if (Bristles.Num() != BrushSegmentsPerWheel)
     {
-        int TotalContactPoints = 0;
-        FVector Center = WheelMesh->GetComponentLocation();
-        FVector UpVector = WheelMesh->GetUpVector();
-        FVector BaseVector = WheelMesh->GetRightVector();
-        const float AngleStep = 360.0f / BrushSegmentsPerWheel;  // degrees between each segment
+        Bristles.SetNum(BrushSegmentsPerWheel);
+    }
+
+    if (Bristles.Num() > 0 && Bristles[0].Num() != BristlesPerSegment)
+    {
+        for (int32 i = 0; i < Bristles.Num(); i++)
+        {
+            Bristles[i].SetNum(BristlesPerSegment);
+        }
+    }
     
+    FVector Center = WheelMesh->GetComponentLocation();
+    FVector RightVector = WheelMesh->GetUpVector();
+    FVector BaseVector = FVector(1, 0, 0);//WheelMesh->GetRightVector();
+    const float AngleStep = 360.0f / BrushSegmentsPerWheel;  // degrees between each segment
+
+    int numBristlesInContact = 0;
+    for (int32 SegmentIndex = 0; SegmentIndex < BrushSegmentsPerWheel; SegmentIndex++)
+    {
+        float AngleDeg = AngleStep * SegmentIndex;
+        float AngleRad = FMath::DegreesToRadians(AngleDeg);
+        
+        FQuat RotationQuat(RightVector, AngleRad);
+        FVector Direction = RotationQuat.RotateVector(BaseVector);
+
+        FVector SegmentCenter = Center + Direction * RimRadius;
+
+        // Calculate spacing along the rim width (for both origin and tip)
+        float OriginSpacing = RimWidth / BristlesPerSegment;
+        float TipSpacing = RimWidth / BristlesPerSegment;
+
+        for (int32 BristleIndex = 0; BristleIndex < BristlesPerSegment; BristleIndex++)
+        {
+            // Compute a centered offset for the origin.
+            float OriginOffset = (BristleIndex + 0.5f - BristlesPerSegment * 0.5f) * OriginSpacing;
+            FVector BristleOrigin = SegmentCenter + RightVector * OriginOffset;
+            
+            // Compute the "raw" tip with an additional offset along UpVector.
+            float TipOffset = (BristleIndex + 0.5f - BristlesPerSegment * 0.5f) * TipSpacing;
+            FVector RawTip = BristleOrigin + Direction * TireSidewallHeight + RightVector * TipOffset;
+
+            // Determine the direction toward the raw tip.
+            FVector DesiredDirection = (RawTip - BristleOrigin).GetSafeNormal();
+
+            // Ensure the drawn bristle is always TireSidewallHeight long.
+            FVector FinalBristleTip = BristleOrigin + DesiredDirection * TireSidewallHeight;
+
+            // Perform a raycast (line trace) from an adjusted origin to the final tip.
+            FVector RayOrigin = BristleOrigin - DesiredDirection * RimRadius;
+            FHitResult HitResult;
+            FCollisionQueryParams QueryParams;
+            QueryParams.AddIgnoredActor(GetOwner());  // Ignore the owner of this component
+            bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, RayOrigin, FinalBristleTip, ECC_Visibility, QueryParams);
+
+            FVector DeflectedBristleTip = bHit ? HitResult.Location : FinalBristleTip;
+            float RadialDeflection = FVector::Distance(DeflectedBristleTip, FinalBristleTip);
+
+            float DeltaDeflection = 0;
+            if (WheelMesh->IsSimulatingPhysics() && bHit)
+            {
+                numBristlesInContact++;
+                DeltaDeflection = RadialDeflection - Bristles[SegmentIndex][BristleIndex].RadialDeflection;
+            }
+
+            FBristle Bristle = FBristle(BristleOrigin, FinalBristleTip, DesiredDirection,
+                HitResult.Location, HitResult.Normal, RadialDeflection, DeltaDeflection, bHit);
+            Bristles[SegmentIndex][BristleIndex] = Bristle;
+
+            FColor DebugColor = bHit ? FColor::Green : FColor::Red;
+            DrawDebugLine(GetWorld(), BristleOrigin, FinalBristleTip, DebugColor, false, -1.0f, 0, 0.5f);
+
+        }
+    }
+    if (numBristlesInContact > 0)
+    {
         for (int32 SegmentIndex = 0; SegmentIndex < BrushSegmentsPerWheel; SegmentIndex++)
         {
-            float AngleDeg = AngleStep * SegmentIndex;
-            float AngleRad = FMath::DegreesToRadians(AngleDeg);
-    
-            // Rotate BaseVector around the Up axis by the calculated angle.
-            FQuat RotationQuat(UpVector, AngleRad);
-            FVector Direction = RotationQuat.RotateVector(BaseVector);
-    
-            FVector SegmentCenter = Center + Direction * RimRadius;
-    
-            // Calculate spacing along the rim width (for both origin and tip)
-            float OriginSpacing = RimWidth / BristlesPerSegment;
-            float TipSpacing = RimWidth / BristlesPerSegment;
-    
             for (int32 BristleIndex = 0; BristleIndex < BristlesPerSegment; BristleIndex++)
             {
-                // Compute a centered offset for the origin.
-                float OriginOffset = (BristleIndex + 0.5f - BristlesPerSegment * 0.5f) * OriginSpacing;
-                FVector BristleOrigin = SegmentCenter + UpVector * OriginOffset;
-                
-                // Compute the "raw" tip with an additional offset along UpVector.
-                float TipOffset = (BristleIndex + 0.5f - BristlesPerSegment * 0.5f) * TipSpacing;
-                FVector RawTip = BristleOrigin + Direction * TireSidewallHeight + UpVector * TipOffset;
-    
-                // Determine the direction toward the raw tip.
-                FVector DesiredDirection = (RawTip - BristleOrigin).GetSafeNormal();
-    
-                // Ensure the drawn bristle is always TireSidewallHeight long.
-                FVector FinalBristleTip = BristleOrigin + DesiredDirection * TireSidewallHeight;
-    
-                // Perform a raycast (line trace) from an adjusted origin to the final tip.
-                FVector RayOrigin = BristleOrigin - DesiredDirection * RimRadius;
-                FHitResult HitResult;
-                FCollisionQueryParams QueryParams;
-                QueryParams.AddIgnoredActor(GetOwner());  // Ignore the owner of this component
-                bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, RayOrigin, FinalBristleTip, ECC_Visibility, QueryParams);
-    
-                if (bHit)
+                if (WheelMesh->IsSimulatingPhysics())
                 {
-                    TotalContactPoints++;
+                    FBristle BristleState = Bristles[SegmentIndex][BristleIndex];
+
+                    FVector AxleConstraintForce;
+                    FVector AxleConstraintAngularForce;
+                    AxleConstraint->GetConstraintForce(AxleConstraintForce, AxleConstraintAngularForce);
+                    float AxleWeight = AxleConstraintForce.Size() / 9.81f;
+                    float DampingCoefficientAdjustment = 2.0f * FMath::Sqrt(BristleRadialStiffness * (255.0 / (BrushSegmentsPerWheel * BristlesPerSegment)));
+                    //UE_LOG(LogTemp, Warning, TEXT("Damping: %f"), RadialDeflectionDampingCoefficent * DampingCoefficientAdjustment);
+                
+                    float DampingMagnitude = RadialDeflectionDampingCoefficent * DampingCoefficientAdjustment * (BristleState.RadialDeflectionDelta / DeltaTime);
+                    float DeflectionMagnitude = BristleRadialStiffness * BristleState.RadialDeflection / cMToM;
+                    FVector RadialDeflectionForce = FMath::Max(0, DeflectionMagnitude + DampingMagnitude) * BristleState.ContactNormal;
+                    WheelMesh->AddForceAtLocation(RadialDeflectionForce, BristleState.Origin, NAME_None);
                 }
-                
-                // Choose debug color: green if hit, red if not.
-                FColor DebugColor = bHit ? FColor::Green : FColor::Red;
-                
-                // Draw the debug line (bristle) with the chosen color.
-                DrawDebugLine(GetWorld(), BristleOrigin, FinalBristleTip, DebugColor, false, -1.0f, 0, 0.5f);
             }
-        }
-    
-        // Apply upward force based on total contact points
-        // (ForcePerContactPoint should be defined as a float variable, e.g., a UPROPERTY.)
-        float ForceMagnitude = TotalContactPoints * ForcePerContactPoint;
-        if (WheelMesh->IsSimulatingPhysics())
-        {
-            WheelMesh->AddForce(ForceMagnitude * FVector(0, 0, 1), NAME_None, false);
         }
     }
 }
