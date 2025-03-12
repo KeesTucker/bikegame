@@ -22,8 +22,23 @@ public:
 	FVector GetTireForce() const;
 
 protected:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(BlueprintReadWrite)
 	UStaticMeshComponent* WheelMesh;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, DisplayName="Rim Diameter (Inches)")
+	float RimDiameterInches = 17;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, DisplayName="Rim Width (Inches)")
+	float RimWidthInches = 3.5;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, DisplayName="Tire Width (mm)")
+	float TireWidthMm = 120;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, DisplayName="Tire Aspect Ratio")
+	float TireAspectRatio = 60;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float BrushSegmentsPerWheel = 32;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float BristlesPerSegment = 8;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float ForcePerContactPoint = 8;
 	
 private:
 	std::thread BrushThread;
@@ -32,8 +47,16 @@ private:
 	// Thread-safe force storage
 	std::atomic<float> Fx;
 	std::atomic<float> Fy;
-	std::atomic<float> Fz; 
+	std::atomic<float> Fz;
+
+	const float InchToCm = 2.54;
+	const float MmToCm = 0.1;
 	
+	float RimRadius;
+	float RimWidth;
+	float TireWidth;
+	float TireSidewallHeight;
+
 	// Brush model update loop (runs in its own thread)
 	void RunBrushModel();
     
