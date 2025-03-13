@@ -43,11 +43,11 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float BristlesPerSegment = 8;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float TirePressure = 1000;
+	float TireStiffness = 1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float RadialDeflectionStiffness = 1000;
+	float TireDamping = 1;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float RadialDeflectionDampingCoefficent = 100;
+	float MaxTireForce = 5000;
 	
 private:
 	struct FBristle
@@ -99,7 +99,8 @@ private:
 	float RimWidth;
 	float TireWidth;
 	float TireSidewallHeight;
-	float BristleRadialStiffness;
+	float PreviousDeflection;
+	float PreviousAxleVelocity;
 
 	TArray<TArray<FBristle>>  Bristles;
 	

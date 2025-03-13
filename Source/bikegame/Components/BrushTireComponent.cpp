@@ -1,8 +1,8 @@
 #include "BrushTireComponent.h"
 #include "GameFramework/Actor.h"
 
-UBrushTireComponent::UBrushTireComponent(): WheelMesh(nullptr), AxleConstraint(nullptr), RimRadius(0), RimWidth(0),
-    TireWidth(0), TireSidewallHeight(0), BristleRadialStiffness(0)
+UBrushTireComponent::UBrushTireComponent(): WheelMesh(nullptr), AxleConstraint(nullptr), TireStiffness(0), RimRadius(0),
+                                            RimWidth(0), TireWidth(0), TireSidewallHeight(0), PreviousDeflection(0)
 {
     PrimaryComponentTick.bCanEverTick = true;
     Fx = 0.0f;
@@ -19,7 +19,6 @@ void UBrushTireComponent::BeginPlay()
     RimWidth = RimWidthInches * InchTocm;
     TireWidth = TireWidthMm * mmTocm;
     TireSidewallHeight = TireWidth * (TireAspectRatio / 100);
-    BristleRadialStiffness = RadialDeflectionStiffness / BrushSegmentsPerWheel / BrushSegmentsPerWheel;
 
     SetActive(true);
     SetAsyncPhysicsTickEnabled(true);
@@ -45,106 +44,70 @@ void UBrushTireComponent::AsyncPhysicsTickComponent(float DeltaTime, float SimTi
 {
     Super::AsyncPhysicsTickComponent(DeltaTime, SimTime);
 
-    if (Bristles.Num() != BrushSegmentsPerWheel)
+    FVector AxleConstraintForce;
+    FVector AxleConstraintAngularForce;
+    AxleConstraint->GetConstraintForce(AxleConstraintForce, AxleConstraintAngularForce);
+    float EffectiveMass = AxleConstraintForce.Size() / 9.81f; // Weird constant?? I feel like this should work but its way off.
+    UE_LOG(LogTemp, Warning, TEXT("Mass: %f"), EffectiveMass);
+    const float TireDampingCoefficient = 2 * FMath::Sqrt(TireStiffness * EffectiveMass) * TireDamping;
+    
+    /*// Get the current wheel location
+    FVector WheelLocation = WheelMesh->GetComponentLocation();
+    // Assume the tire extends downward along the negative Z-axis
+    FVector DownVector = FVector(0, 0, -1);
+    
+    // Define the raycast range, e.g., from the wheel center downward by the tire's nominal height
+    float NominalHeight = RimRadius + TireSidewallHeight;
+    FVector Start = WheelLocation;
+    FVector End = Start + DownVector * NominalHeight;
+    
+    // Perform the raycast to detect the ground
+    FHitResult HitResult;
+    FCollisionQueryParams QueryParams;
+    QueryParams.AddIgnoredActor(GetOwner());
+    
+    bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, QueryParams);
+    
+    float NormalForce = 0.0f;
+    if (bHit)
     {
-        Bristles.SetNum(BrushSegmentsPerWheel);
-    }
-
-    if (Bristles.Num() > 0 && Bristles[0].Num() != BristlesPerSegment)
-    {
-        for (int32 i = 0; i < Bristles.Num(); i++)
+        // Ground distance from the wheel center
+        float GroundDistance = HitResult.Distance;
+        
+        // Calculate deflection (compression): if the distance is less than the nominal height,
+        // the tire is compressed.
+        float Deflection = NominalHeight - GroundDistance;
+        
+        // Only compute force when the tire is in compression (Deflection > 0)
+        if (Deflection > 0.0f)
         {
-            Bristles[i].SetNum(BristlesPerSegment);
+            // Compute the rate of compression (ḋ)
+            float DeflectionRate = (Deflection - PreviousDeflection) / DeltaTime;
+            PreviousDeflection = Deflection;
+
+            FVector AxleConstraintForce;
+            FVector AxleConstraintAngularForce;
+            AxleConstraint->GetConstraintForce(AxleConstraintForce, AxleConstraintAngularForce);
+            float EffectiveMass = AxleConstraintForce.Size() / 9.81f; // Weird constant?? I feel like this should work but its way off.
+            UE_LOG(LogTemp, Warning, TEXT("Mass: %f"), EffectiveMass);
+            const float TireDampingCoefficient = 2 * FMath::Sqrt(TireStiffness * EffectiveMass) * TireDamping;
+            
+            // Compute the spring-damper force
+            NormalForce = ((TireStiffness * Deflection) + (TireDampingCoefficient * DeflectionRate)) / cMToM;
+            // Clamp to ensure the force only pushes upward
+            NormalForce = FMath::Clamp(NormalForce, -MaxTireForce / cMToM, MaxTireForce / cMToM);
         }
+    }
+    else
+    {
+        // Reset deflection if not in contact
+        PreviousDeflection = 0.0f;
     }
     
-    FVector Center = WheelMesh->GetComponentLocation();
-    FVector RightVector = WheelMesh->GetUpVector();
-    FVector BaseVector = FVector(1, 0, 0);//WheelMesh->GetRightVector();
-    const float AngleStep = 360.0f / BrushSegmentsPerWheel;  // degrees between each segment
-
-    int numBristlesInContact = 0;
-    for (int32 SegmentIndex = 0; SegmentIndex < BrushSegmentsPerWheel; SegmentIndex++)
-    {
-        float AngleDeg = AngleStep * SegmentIndex;
-        float AngleRad = FMath::DegreesToRadians(AngleDeg);
-        
-        FQuat RotationQuat(RightVector, AngleRad);
-        FVector Direction = RotationQuat.RotateVector(BaseVector);
-
-        FVector SegmentCenter = Center + Direction * RimRadius;
-
-        // Calculate spacing along the rim width (for both origin and tip)
-        float OriginSpacing = RimWidth / BristlesPerSegment;
-        float TipSpacing = RimWidth / BristlesPerSegment;
-
-        for (int32 BristleIndex = 0; BristleIndex < BristlesPerSegment; BristleIndex++)
-        {
-            // Compute a centered offset for the origin.
-            float OriginOffset = (BristleIndex + 0.5f - BristlesPerSegment * 0.5f) * OriginSpacing;
-            FVector BristleOrigin = SegmentCenter + RightVector * OriginOffset;
-            
-            // Compute the "raw" tip with an additional offset along UpVector.
-            float TipOffset = (BristleIndex + 0.5f - BristlesPerSegment * 0.5f) * TipSpacing;
-            FVector RawTip = BristleOrigin + Direction * TireSidewallHeight + RightVector * TipOffset;
-
-            // Determine the direction toward the raw tip.
-            FVector DesiredDirection = (RawTip - BristleOrigin).GetSafeNormal();
-
-            // Ensure the drawn bristle is always TireSidewallHeight long.
-            FVector FinalBristleTip = BristleOrigin + DesiredDirection * TireSidewallHeight;
-
-            // Perform a raycast (line trace) from an adjusted origin to the final tip.
-            FVector RayOrigin = BristleOrigin - DesiredDirection * RimRadius;
-            FHitResult HitResult;
-            FCollisionQueryParams QueryParams;
-            QueryParams.AddIgnoredActor(GetOwner());  // Ignore the owner of this component
-            bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, RayOrigin, FinalBristleTip, ECC_Visibility, QueryParams);
-
-            FVector DeflectedBristleTip = bHit ? HitResult.Location : FinalBristleTip;
-            float RadialDeflection = FVector::Distance(DeflectedBristleTip, FinalBristleTip);
-
-            float DeltaDeflection = 0;
-            if (WheelMesh->IsSimulatingPhysics() && bHit)
-            {
-                numBristlesInContact++;
-                DeltaDeflection = RadialDeflection - Bristles[SegmentIndex][BristleIndex].RadialDeflection;
-            }
-
-            FBristle Bristle = FBristle(BristleOrigin, FinalBristleTip, DesiredDirection,
-                HitResult.Location, HitResult.Normal, RadialDeflection, DeltaDeflection, bHit);
-            Bristles[SegmentIndex][BristleIndex] = Bristle;
-
-            FColor DebugColor = bHit ? FColor::Green : FColor::Red;
-            DrawDebugLine(GetWorld(), BristleOrigin, FinalBristleTip, DebugColor, false, -1.0f, 0, 0.5f);
-
-        }
-    }
-    if (numBristlesInContact > 0)
-    {
-        for (int32 SegmentIndex = 0; SegmentIndex < BrushSegmentsPerWheel; SegmentIndex++)
-        {
-            for (int32 BristleIndex = 0; BristleIndex < BristlesPerSegment; BristleIndex++)
-            {
-                if (WheelMesh->IsSimulatingPhysics())
-                {
-                    FBristle BristleState = Bristles[SegmentIndex][BristleIndex];
-
-                    FVector AxleConstraintForce;
-                    FVector AxleConstraintAngularForce;
-                    AxleConstraint->GetConstraintForce(AxleConstraintForce, AxleConstraintAngularForce);
-                    float AxleWeight = AxleConstraintForce.Size() / 9.81f;
-                    float DampingCoefficientAdjustment = 2.0f * FMath::Sqrt(BristleRadialStiffness * (255.0 / (BrushSegmentsPerWheel * BristlesPerSegment)));
-                    //UE_LOG(LogTemp, Warning, TEXT("Damping: %f"), RadialDeflectionDampingCoefficent * DampingCoefficientAdjustment);
-                
-                    float DampingMagnitude = RadialDeflectionDampingCoefficent * DampingCoefficientAdjustment * (BristleState.RadialDeflectionDelta / DeltaTime);
-                    float DeflectionMagnitude = BristleRadialStiffness * BristleState.RadialDeflection / cMToM;
-                    FVector RadialDeflectionForce = FMath::Max(0, DeflectionMagnitude + DampingMagnitude) * BristleState.ContactNormal;
-                    WheelMesh->AddForceAtLocation(RadialDeflectionForce, BristleState.Origin, NAME_None);
-                }
-            }
-        }
-    }
+    // Apply the computed vertical force at the wheel's location.
+    // Note: The force is applied in the world upward direction.
+    FVector ForceVector = FVector(0, 0, NormalForce);
+    WheelMesh->AddForce(ForceVector);*/
 }
 
 void UBrushTireComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
