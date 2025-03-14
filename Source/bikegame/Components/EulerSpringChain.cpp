@@ -41,7 +41,7 @@ void UEulerSpringChain::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 		Velocity += GetWorld()->GetGravityZ() * FVector(0.f, 0.f, 1.0f) * DeltaTimeSub;
 		
 		float deflection = Location.Z * -1.0f;
-		/*if (deflection > 0)
+		if (deflection > 0)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Deflection: %f"), deflection);
 			float EffectiveStiffness = Stiffness;
@@ -53,13 +53,33 @@ void UEulerSpringChain::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 			}
 		
 			Velocity = GetSpringVelocity(Location, Velocity, Target->GetMass(), DeltaTimeSub, EffectiveStiffness, EffectiveDamping);
-		}#1#
+		}
+
+		for (FVector CollisionConstraint : CollisionConstraints)
+		{
+			Velocity = GetSpringVelocity(CollisionConstraint - Location, Velocity, Target->GetMass(), DeltaTimeSub, CollisionStiffness, CollisionDamping);
+		}
 		
 		Location += Velocity * DeltaTimeSub;
 	}*/
 	Velocity += GetWorld()->GetGravityZ() * FVector(0.f, 0.f, 1.0f) * DeltaTime;
+	for (FVector CollisionConstraint : CollisionConstraints)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("COLLIDING"));
+		FVector NewVelocity = GetSpringVelocity(CollisionConstraint - Location, Velocity, Target->GetMass(), DeltaTime, CollisionStiffness, CollisionDamping);
+		if (NewVelocity.Z > Velocity.Z)
+		{
+			// todo: replace with normal calculation
+			Velocity = NewVelocity;
+		}
+	}
+
+
 	Location += Velocity * DeltaTime;
+	Target->SetPhysicsLinearVelocity(Velocity);
 	Target->SetWorldLocation(Location);
+
+	CollisionConstraints.Empty();
 }
 
 void UEulerSpringChain::AsyncPhysicsTickComponent(float DeltaTime, float SimTime)
@@ -75,10 +95,7 @@ void UEulerSpringChain::OnHitCallback(UPrimitiveComponent* HitComp, AActor* Othe
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("Impulse: %f"), NormalImpulse.Size());
-	
-	Velocity = FVector::Zero();
-	Location += Hit.Normal * Hit.PenetrationDepth * 2.0f;
+	CollisionConstraints.Add(Location + (Hit.Normal * Hit.PenetrationDepth));
 }
 
 FVector UEulerSpringChain::GetSpringForce(FVector x, FVector v, float m, float dt, float k, float c)

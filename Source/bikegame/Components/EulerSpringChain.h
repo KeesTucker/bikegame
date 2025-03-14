@@ -45,4 +45,12 @@ private:
 	FVector Location = FVector(0.f, 0.f, 1000.f);
 	FVector GetSpringForce(FVector x, FVector v, float m, float dt, float k, float c);
 	FVector GetSpringVelocity(FVector x, FVector v, float m, float dt, float k, float c);
+
+	struct FCollision
+	{
+		FVector Target;
+		FVector Normal;
+		//TODO: implement this
+	};
+	TArray<FVector> CollisionConstraints;
 };
