@@ -1,14 +1,16 @@
 ﻿#include "KPhysics.h"
+#include "GameFramework/Actor.h"
+#include "Components/PrimitiveComponent.h"
+#include "DrawDebugHelpers.h" // Optional: for visualizing impulses
 
 /////////////////////////////////////////////////////
 // Constructor and Initialization
 /////////////////////////////////////////////////////
 
-// Sets default values for this component's properties.
 UKPhysics::UKPhysics() 
-	: TargetComponent(nullptr)
-	, LinearVelocity()
+	: LinearVelocity()
 	, AngularVelocity()
+	, RootPrimitive(nullptr)
 {
 	// Enable ticking for this component.
 	PrimaryComponentTick.bCanEverTick = true;
@@ -19,111 +21,114 @@ void UKPhysics::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	// Activate the component and enable asynchronous physics ticking.
-	SetActive(true);
-	SetAsyncPhysicsTickEnabled(true);
+	// Cache the actor's root component (assumed to be a UPrimitiveComponent).
+	RootPrimitive = Cast<UPrimitiveComponent>(GetOwner()->GetRootComponent());
+	if (!RootPrimitive)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("KPhysics: Actor's RootComponent is not a UPrimitiveComponent."));
+		return;
+	}
+
+	RootPrimitive->SetMassOverrideInKg(NAME_None, Mass, true);
+	RootPrimitive->RecreatePhysicsState();
+	RootPrimitive->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	RootPrimitive->SetCollisionResponseToAllChannels(ECR_Block);
+	RootPrimitive->SetSimulatePhysics(false);
 }
 
 /////////////////////////////////////////////////////
 // Main Physics Simulation Update
 /////////////////////////////////////////////////////
 
-// Called every frame.
 void UKPhysics::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	// Ensure that the target component and world exist.
-	if (!TargetComponent || !GetWorld())
-	{
-		return;
-	}
-
-	// Calculate the time interval for each integration substep.
-	float SubstepDeltaTime = DeltaTime / static_cast<float>(NumIntegrationSubsteps);
+    if (!RootPrimitive || !GetWorld())
+    {
+        return;
+    }
+	
+    const float TargetSubstepDeltaTime = 1.f / NumHzPhysics;
+    // Calculate the number of substeps needed to cover the frame's DeltaTime.
+    int DynamicSubsteps = FMath::CeilToInt(DeltaTime / TargetSubstepDeltaTime);
+    // Ensure there is at least one substep.
+    DynamicSubsteps = FMath::Max(1, DynamicSubsteps);
     
-	// Perform physics simulation using multiple substeps.
-	for (int SubstepIndex = 0; SubstepIndex < NumIntegrationSubsteps; ++SubstepIndex)
-	{
-		// ----------------------------------------------------------------
-		// 1) Apply Damping to Linear and Angular Velocities
-		// ----------------------------------------------------------------
-		// Reduce linear velocity using a simple damping model.
-		LinearVelocity -= (LinearVelocity * LinearDampingFactor * SubstepDeltaTime);
-		// Reduce angular velocity using a simple damping model.
-		AngularVelocity -= (AngularVelocity * AngularDampingFactor * SubstepDeltaTime);
+    // Recalculate the delta time for each integration substep.
+    const float SubstepDeltaTime = DeltaTime / static_cast<float>(DynamicSubsteps);
 
-		// ----------------------------------------------------------------
-		// 2) Apply Gravity
-		// ----------------------------------------------------------------
-		// Unreal Engine's gravity acts in the negative Z direction.
-		// Adjust the linear velocity using the world's gravity value.
-		LinearVelocity += (GetWorld()->GetGravityZ() * FVector(0.f, 0.f, 1.f)) * SubstepDeltaTime;
+    for (int SubstepIndex = 0; SubstepIndex < DynamicSubsteps; ++SubstepIndex)
+    {
+        // ----------------------------------------------------------------
+        // 1) Apply Damping to Linear and Angular Velocities
+        // ----------------------------------------------------------------
+        LinearVelocity -= (LinearVelocity * LinearDampingFactor * SubstepDeltaTime);
+        AngularVelocity -= (AngularVelocity * AngularDampingFactor * SubstepDeltaTime);
 
-		// ----------------------------------------------------------------
-		// 3) Update Target Orientation Based on Angular Velocity
-		// ----------------------------------------------------------------
-		// Get the current orientation of the target.
-		FQuat CurrentOrientation = TargetComponent->GetComponentQuat();
-		
-		{
-			// Compute the angular change over the substep.
-			FVector DeltaAngularVelocity = AngularVelocity * SubstepDeltaTime;
-			float RotationAngle = DeltaAngularVelocity.Size();
+        // ----------------------------------------------------------------
+        // 2) Apply Gravity
+        // ----------------------------------------------------------------
+        LinearVelocity += (GetWorld()->GetGravityZ() * FVector(0.f, 0.f, 1.f)) * SubstepDeltaTime;
 
-			// Only update orientation if rotation is significant.
-			if (RotationAngle > KINDA_SMALL_NUMBER)
-			{
-				FVector RotationAxis = DeltaAngularVelocity / RotationAngle;
-				float HalfRotationAngle = 0.5f * RotationAngle;
-				float SineHalfAngle = FMath::Sin(HalfRotationAngle);
+        // ----------------------------------------------------------------
+        // 3) Update Target Orientation Based on Angular Velocity
+        // ----------------------------------------------------------------
+        FQuat CurrentOrientation = RootPrimitive->GetComponentQuat();
+        {
+            FVector DeltaAngularVelocity = AngularVelocity * SubstepDeltaTime;
+            float RotationAngle = DeltaAngularVelocity.Size();
 
-				// Compute the quaternion representing the rotational change.
-				FQuat RotationDeltaQuat(RotationAxis.X * SineHalfAngle, RotationAxis.Y * SineHalfAngle, RotationAxis.Z * SineHalfAngle, FMath::Cos(HalfRotationAngle));
-				CurrentOrientation = RotationDeltaQuat * CurrentOrientation;
-				CurrentOrientation.Normalize();
-			}
-		}
+            if (RotationAngle > KINDA_SMALL_NUMBER)
+            {
+                FVector RotationAxis = DeltaAngularVelocity / RotationAngle;
+                float HalfRotationAngle = 0.5f * RotationAngle;
+                float SineHalfAngle = FMath::Sin(HalfRotationAngle);
+                FQuat RotationDeltaQuat(
+                    RotationAxis.X * SineHalfAngle,
+                    RotationAxis.Y * SineHalfAngle,
+                    RotationAxis.Z * SineHalfAngle,
+                    FMath::Cos(HalfRotationAngle)
+                );
+                CurrentOrientation = RotationDeltaQuat * CurrentOrientation;
+                CurrentOrientation.Normalize();
+            }
+        }
 
-		// ----------------------------------------------------------------
-		// 4) Apply Linear Motion and Detect Collisions
-		// ----------------------------------------------------------------
-		FHitResult LinearHitResult;
-		// Move the target based on the updated linear velocity.
-		TargetComponent->AddWorldOffset(LinearVelocity * SubstepDeltaTime, true, &LinearHitResult);
-		// If a collision is detected during linear motion, resolve it.
-		if (LinearHitResult.bBlockingHit)
-		{
-			ResolveCollision(LinearHitResult, SubstepDeltaTime);
-		}
+        // ----------------------------------------------------------------
+        // 4) Apply Linear Motion and Detect Collisions
+        // ----------------------------------------------------------------
+        FHitResult LinearHitResult;
+        RootPrimitive->AddWorldOffset(LinearVelocity * SubstepDeltaTime, true, &LinearHitResult);
+        if (LinearHitResult.bBlockingHit)
+        {
+            ResolveCollision(LinearHitResult, RootPrimitive);
+        }
 
-		// ----------------------------------------------------------------
-		// 5) Apply Angular Motion and Detect Collisions
-		// ----------------------------------------------------------------
-		FQuat InitialOrientation = TargetComponent->GetComponentQuat();
-		// Calculate the difference between the new and initial orientations.
-		FQuat RotationDeltaQuat = CurrentOrientation * InitialOrientation.Inverse();
-		FHitResult AngularHitResult;
-		// Apply the rotational movement.
-		TargetComponent->AddWorldRotation(RotationDeltaQuat.Rotator(), true, &AngularHitResult);
-		// If a collision is detected during angular motion, resolve it.
-		if (AngularHitResult.bBlockingHit)
-		{
-			ResolveCollision(AngularHitResult, SubstepDeltaTime);
-		}
-	}
+        // ----------------------------------------------------------------
+        // 5) Apply Angular Motion and Detect Collisions
+        // ----------------------------------------------------------------
+        FQuat InitialOrientation = RootPrimitive->GetComponentQuat();
+        FQuat RotationDeltaQuat = CurrentOrientation * InitialOrientation.Inverse();
+        FHitResult AngularHitResult;
+        RootPrimitive->AddWorldRotation(RotationDeltaQuat.Rotator(), true, &AngularHitResult);
+        if (AngularHitResult.bBlockingHit)
+        {
+            ResolveCollision(AngularHitResult, RootPrimitive);
+        }
+    }
 }
+
 
 /////////////////////////////////////////////////////
 // Collision Resolution
 /////////////////////////////////////////////////////
 
-// Resolves collision responses based on the hit result and the substep delta time.
-void UKPhysics::ResolveCollision(FHitResult& Hit, float SubstepDeltaTime)
+void UKPhysics::ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent)
 {
-	// Retrieve the center of mass and current orientation of the target.
-	FVector CenterOfMass = TargetComponent->GetCenterOfMass();
-	FQuat CurrentOrientation = TargetComponent->GetComponentQuat();
+	// Retrieve the center of mass and current orientation of the physics body.
+	FVector CenterOfMass = PrimitiveComponent->GetCenterOfMass();
+	FQuat CurrentOrientation = PrimitiveComponent->GetComponentQuat();
 	
 	// Compute the offset from the center of mass to the contact impact point.
 	FVector ContactImpactPoint = Hit.ImpactPoint;
@@ -135,8 +140,8 @@ void UKPhysics::ResolveCollision(FHitResult& Hit, float SubstepDeltaTime)
 	// Determine the velocity component along the collision normal.
 	float RelativeNormalVelocity = FVector::DotProduct(ContactRelativeVelocity, Hit.Normal);
 	
-	// Build the local inertia tensor matrix using the target's inertia tensor diagonal.
-	FVector LocalInertiaTensorDiagonal = TargetComponent->BodyInstance.GetBodyInertiaTensor();
+	// Build the local inertia tensor matrix using the body's inertia tensor diagonal.
+	FVector LocalInertiaTensorDiagonal = PrimitiveComponent->BodyInstance.GetBodyInertiaTensor();
 	FMatrix LocalInertiaTensorMatrix = FMatrix::Identity;
 	LocalInertiaTensorMatrix.M[0][0] = LocalInertiaTensorDiagonal.X;
 	LocalInertiaTensorMatrix.M[1][1] = LocalInertiaTensorDiagonal.Y;
@@ -150,24 +155,17 @@ void UKPhysics::ResolveCollision(FHitResult& Hit, float SubstepDeltaTime)
 	// ----------------------------------------------------------------
 	// 1) Resolve Normal Collision Impulse
 	// ----------------------------------------------------------------
-	// Only process collisions when the object is moving into the contact surface.
 	if (RelativeNormalVelocity < -KINDA_SMALL_NUMBER)
 	{
-		// Compute the effective mass for the normal impulse:
-		// effectiveMass = 1/TargetMass + n • [ (I⁻¹ * (r × n)) × r ]
 		FVector LeverArmCrossNormal = FVector::CrossProduct(ContactOffset, Hit.Normal);
 		FVector InertiaInverseCrossResult = WorldInertiaTensorInverse.TransformVector(LeverArmCrossNormal);
 		FVector RotationalComponent = FVector::CrossProduct(InertiaInverseCrossResult, ContactOffset);
-		float EffectiveNormalMass = (1.0f / TargetMass) + FVector::DotProduct(Hit.Normal, RotationalComponent);
+		float EffectiveNormalMass = (1.0f / Mass) + FVector::DotProduct(Hit.Normal, RotationalComponent);
 		
-		// Compute the magnitude of the normal impulse:
-		// impulseMagnitude = -(1 + RestitutionCoefficient) * (relativeVelocity · n) / effectiveMass
 		float NormalImpulseMagnitude = -(1.f + RestitutionCoefficient) * RelativeNormalVelocity / EffectiveNormalMass;
-		
-		// Calculate the collision impulse vector.
 		FVector CollisionImpulse = NormalImpulseMagnitude * Hit.Normal;
-
-		// Optionally, you can draw a debug arrow to visualize the collision impulse.
+		
+		// Optional: Visualize the collision impulse.
 		/*
 		DrawDebugDirectionalArrow(
 			GetWorld(),
@@ -180,47 +178,35 @@ void UKPhysics::ResolveCollision(FHitResult& Hit, float SubstepDeltaTime)
 		);
 		*/
 		
-		// Update the linear velocity based on the collision impulse.
-		LinearVelocity += CollisionImpulse / TargetMass;
-		// Compute the angular torque from the collision impulse and update angular velocity.
+		LinearVelocity += CollisionImpulse / Mass;
 		FVector AngularTorque = FVector::CrossProduct(ContactOffset, CollisionImpulse);
 		AngularVelocity += WorldInertiaTensorInverse.TransformVector(AngularTorque);
 		
 		// ----------------------------------------------------------------
 		// 2) Resolve Friction Impulse
 		// ----------------------------------------------------------------
-		// Recalculate the relative velocity at the contact point after applying the normal impulse.
 		ContactRelativeVelocity = LinearVelocity + FVector::CrossProduct(AngularVelocity, ContactOffset);
-		// Decompose the velocity into normal and tangential components relative to the contact surface.
 		FVector PostCollisionNormalVelocity = FVector::DotProduct(ContactRelativeVelocity, Hit.Normal) * Hit.Normal;
 		FVector PostCollisionTangentialVelocity = ContactRelativeVelocity - PostCollisionNormalVelocity;
 		float TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
 		
-		// If tangential velocity is very small but angular velocity is significant, induce slip.
 		if (TangentialVelocityMagnitude < KINDA_SMALL_NUMBER && AngularVelocity.Size() > KINDA_SMALL_NUMBER)
 		{
-			// Compute induced slip from rotation: inducedSlipVelocity = ω × r.
 			FVector InducedSlipVelocity = FVector::CrossProduct(AngularVelocity, ContactOffset);
 			PostCollisionTangentialVelocity = InducedSlipVelocity;
 			TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
 		}
 
-		// Only apply friction if there is significant tangential slip.
 		if (TangentialVelocityMagnitude > KINDA_SMALL_NUMBER)
 		{
-			// Determine the direction of friction based on tangential velocity.
 			FVector FrictionDirection = PostCollisionTangentialVelocity / TangentialVelocityMagnitude;
-	
-			// Compute the effective mass for the friction impulse.
 			FVector LeverArmCrossFriction = FVector::CrossProduct(ContactOffset, FrictionDirection);
 			FVector InertiaInverseCrossFriction = WorldInertiaTensorInverse.TransformVector(LeverArmCrossFriction);
 			FVector RotationalFrictionComponent = FVector::CrossProduct(InertiaInverseCrossFriction, ContactOffset);
-			float EffectiveFrictionMass = (1.0f / TargetMass) + FVector::DotProduct(FrictionDirection, RotationalFrictionComponent);
+			float EffectiveFrictionMass = (1.0f / Mass) + FVector::DotProduct(FrictionDirection, RotationalFrictionComponent);
 	
-			// Calculate the candidate friction impulse magnitude to cancel the tangential velocity.
 			float CandidateFrictionImpulse = -FVector::DotProduct(PostCollisionTangentialVelocity, FrictionDirection) / EffectiveFrictionMass;
 	
-			// Limit the friction impulse based on the static and dynamic friction coefficients.
 			float MaxStaticImpulse = StaticFrictionCoefficient * FMath::Abs(NormalImpulseMagnitude);
 			float MaxDynamicImpulse = DynamicFrictionCoefficient * FMath::Abs(NormalImpulseMagnitude);
 	
@@ -234,12 +220,8 @@ void UKPhysics::ResolveCollision(FHitResult& Hit, float SubstepDeltaTime)
 				FinalFrictionImpulseMagnitude = -MaxDynamicImpulse * FMath::Sign(FVector::DotProduct(PostCollisionTangentialVelocity, FrictionDirection));
 			}
 	
-			// Compute the friction impulse vector.
 			FVector FrictionImpulse = FinalFrictionImpulseMagnitude * FrictionDirection;
-	
-			// Update linear velocity based on the friction impulse.
-			LinearVelocity += FrictionImpulse / TargetMass;
-			// Compute the friction torque and update angular velocity.
+			LinearVelocity += FrictionImpulse / Mass;
 			FVector FrictionAngularTorque = FVector::CrossProduct(ContactOffset, FrictionImpulse);
 			AngularVelocity += WorldInertiaTensorInverse.TransformVector(FrictionAngularTorque);
 		}

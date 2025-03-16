@@ -6,7 +6,7 @@
 
 /**
  * UKPhysics is a custom physics simulation component.
- * It applies forces such as gravity, damping, and collision responses on a target primitive component.
+ * It applies forces such as gravity, damping, and collision responses on the actor's root primitive component.
  */
 UCLASS(ClassGroup=(Physics), meta=(BlueprintSpawnableComponent))
 class BIKEGAME_API UKPhysics : public UActorComponent
@@ -21,18 +21,13 @@ protected:
 	// Called when the game starts.
 	virtual void BeginPlay() override;
 	
-	// The target component on which the custom physics simulation will be applied.
-	UPROPERTY(BlueprintReadWrite)
-	UPrimitiveComponent* TargetComponent;
-
 	// Number of integration substeps to use per frame for higher simulation accuracy.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	int NumIntegrationSubsteps = 32;
-	
-	// Mass of the target (in kg or chosen units).
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Physics")
-	float TargetMass = 1.f;
+	float NumHzPhysics = 1000.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Physics")
+	float Mass = 10.f;
+	
 	// Static friction coefficient (mu_s) for holding an object at rest.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Friction")
 	float StaticFrictionCoefficient = 0.6f;
@@ -59,10 +54,14 @@ public:
 	
 private:
 	// Resolves collision responses when a collision is detected.
-	void ResolveCollision(FHitResult& Hit, float DeltaTime);
+	void ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent);
 	
-	// Current linear velocity of the target.
+	// Current linear velocity of the physics body.
 	FVector LinearVelocity;
-	// Current angular velocity of the target.
+	// Current angular velocity of the physics body.
 	FVector AngularVelocity;
+
+	// Cached reference to the actor's root primitive component.
+	UPROPERTY()
+	UPrimitiveComponent* RootPrimitive;
 };
