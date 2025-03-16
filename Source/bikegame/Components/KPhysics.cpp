@@ -72,7 +72,7 @@ void UKPhysics::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompon
 
         // For linear motion:
         FHitResult MoveHit;
-        Target->AddWorldOffset(Velocity * DeltaTime, /*bSweep=*/true, &MoveHit);
+        Target->AddWorldOffset(Velocity * DeltaTime, true, &MoveHit);
         if (MoveHit.bBlockingHit)
         {
             ResolveCollision(MoveHit, DeltaTime);
@@ -82,7 +82,7 @@ void UKPhysics::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompon
         FQuat CurrentQuat = Target->GetComponentQuat();
         FQuat DeltaQuat   = Orientation * CurrentQuat.Inverse();
         FHitResult SweepHit;
-        Target->AddWorldRotation(DeltaQuat.Rotator(), /*bSweep=*/true, &SweepHit);
+        Target->AddWorldRotation(DeltaQuat.Rotator(), true, &SweepHit);
         if (SweepHit.bBlockingHit)
         {
             ResolveCollision(SweepHit, DeltaTime);
