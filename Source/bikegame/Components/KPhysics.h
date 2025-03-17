@@ -47,6 +47,12 @@ protected:
 	// Angular damping factor to reduce angular velocity over time.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Physics")
 	float AngularDampingFactor = 0.1f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Friction")
+	float SlipBias = 0.001f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Friction")
+	float MinInducedSlip = 0.01f;
 
 public:	
 	// Called every frame to update the physics simulation.

@@ -181,18 +181,21 @@ void UKPhysics::ResolveCollision(FHitResult& Hit, UPrimitiveComponent* Primitive
         float TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
 
         // Introduce a small bias to prevent exactly zero slip
-        const float SlipBias = 0.01f; 
         if (TangentialVelocityMagnitude < KINDA_SMALL_NUMBER)
         {
-            FVector InducedSlipVelocity = FVector::CrossProduct(AngularVelocity, ContactOffset);
-            // Blend instead of fully replacing the velocity
-            PostCollisionTangentialVelocity = FMath::Lerp(PostCollisionTangentialVelocity, InducedSlipVelocity, 0.5f);
+        	FVector InducedSlipVelocity = FVector::CrossProduct(AngularVelocity, ContactOffset);
+        	if (InducedSlipVelocity.Size() < MinInducedSlip)
+        	{
+        		InducedSlipVelocity = InducedSlipVelocity.GetSafeNormal() * MinInducedSlip;
+        	}
+        	// Blend it with the computed tangential velocity:
+        	PostCollisionTangentialVelocity = FMath::Lerp(PostCollisionTangentialVelocity, InducedSlipVelocity, 0.5f);
             TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
         }
 
         if (TangentialVelocityMagnitude > KINDA_SMALL_NUMBER)
         {
-            FVector FrictionDirection = PostCollisionTangentialVelocity / TangentialVelocityMagnitude;
+	        FVector FrictionDirection = PostCollisionTangentialVelocity / TangentialVelocityMagnitude;
             FVector LeverArmCrossFriction = FVector::CrossProduct(ContactOffset, FrictionDirection);
             FVector InertiaInverseCrossFriction = WorldInertiaTensorInverse.TransformVector(LeverArmCrossFriction);
             FVector RotationalFrictionComponent = FVector::CrossProduct(InertiaInverseCrossFriction, ContactOffset);
