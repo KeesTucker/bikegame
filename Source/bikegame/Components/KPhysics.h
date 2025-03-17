@@ -4,6 +4,52 @@
 #include "Components/ActorComponent.h"
 #include "KPhysics.generated.h"
 
+//---------------------------------------------------------------------
+// DVector: A double-precision 3D vector type
+//---------------------------------------------------------------------
+struct DVector {
+	double x, y, z;
+
+	DVector() : x(0.0), y(0.0), z(0.0) {}
+	DVector(double _x, double _y, double _z) : x(_x), y(_y), z(_z) {}
+	DVector(const FVector& vec) : x(vec.X), y(vec.Y), z(vec.Z) {}
+
+	// Conversion operator to FVector (Unreal uses float)
+	operator FVector() const {
+		return FVector(static_cast<float>(x),
+					   static_cast<float>(y),
+					   static_cast<float>(z));
+	}
+
+	DVector operator+(const DVector& other) const {
+		return DVector(x + other.x, y + other.y, z + other.z);
+	}
+	DVector operator-(const DVector& other) const {
+		return DVector(x - other.x, y - other.y, z - other.z);
+	}
+	DVector operator*(double scalar) const {
+		return DVector(x * scalar, y * scalar, z * scalar);
+	}
+	DVector operator/(double scalar) const {
+		return DVector(x / scalar, y / scalar, z / scalar);
+	}
+	DVector& operator+=(const DVector& other) {
+		x += other.x; y += other.y; z += other.z;
+		return *this;
+	}
+	DVector& operator-=(const DVector& other) {
+		x -= other.x; y -= other.y; z -= other.z;
+		return *this;
+	}
+	double Size() const {
+		return std::sqrt(x * x + y * y + z * z);
+	}
+	DVector GetSafeNormal() const {
+		double s = Size();
+		return (s > 1e-8) ? (*this / s) : DVector(0.0, 0.0, 0.0);
+	}
+};
+
 /**
  * UKPhysics is a custom physics simulation component.
  * It applies forces such as gravity, damping, and collision responses on the actor's root primitive component.
@@ -63,9 +109,9 @@ private:
 	void ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent);
 	
 	// Current linear velocity of the physics body.
-	FVector LinearVelocity;
+	DVector LinearVelocity;
 	// Current angular velocity of the physics body.
-	FVector AngularVelocity;
+	DVector AngularVelocity;
 
 	// Cached reference to the actor's root primitive component.
 	UPROPERTY()
