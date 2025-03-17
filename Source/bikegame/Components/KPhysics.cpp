@@ -126,104 +126,103 @@ void UKPhysics::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompon
 
 void UKPhysics::ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent)
 {
-	// Retrieve the center of mass and current orientation of the physics body.
-	FVector CenterOfMass = PrimitiveComponent->GetCenterOfMass();
-	FQuat CurrentOrientation = PrimitiveComponent->GetComponentQuat();
-	
-	// Compute the offset from the center of mass to the contact impact point.
-	FVector ContactImpactPoint = Hit.ImpactPoint;
-	FVector ContactOffset = ContactImpactPoint - CenterOfMass;
-	
-	// Calculate the relative velocity at the contact point.
-	FVector ContactRelativeVelocity = LinearVelocity + FVector::CrossProduct(AngularVelocity, ContactOffset);
-	
-	// Determine the velocity component along the collision normal.
-	float RelativeNormalVelocity = FVector::DotProduct(ContactRelativeVelocity, Hit.Normal);
-	
-	// Build the local inertia tensor matrix using the body's inertia tensor diagonal.
-	FVector LocalInertiaTensorDiagonal = PrimitiveComponent->BodyInstance.GetBodyInertiaTensor();
-	FMatrix LocalInertiaTensorMatrix = FMatrix::Identity;
-	LocalInertiaTensorMatrix.M[0][0] = LocalInertiaTensorDiagonal.X;
-	LocalInertiaTensorMatrix.M[1][1] = LocalInertiaTensorDiagonal.Y;
-	LocalInertiaTensorMatrix.M[2][2] = LocalInertiaTensorDiagonal.Z;
-	
-	// Transform the local inertia tensor to world space.
-	FMatrix RotationMatrix = FRotationMatrix::Make(CurrentOrientation);
-	FMatrix WorldInertiaTensor = RotationMatrix * LocalInertiaTensorMatrix * RotationMatrix.GetTransposed();
-	FMatrix WorldInertiaTensorInverse = WorldInertiaTensor.InverseFast();
-	
-	// ----------------------------------------------------------------
-	// 1) Resolve Normal Collision Impulse
-	// ----------------------------------------------------------------
-	if (RelativeNormalVelocity < -KINDA_SMALL_NUMBER)
-	{
-		FVector LeverArmCrossNormal = FVector::CrossProduct(ContactOffset, Hit.Normal);
-		FVector InertiaInverseCrossResult = WorldInertiaTensorInverse.TransformVector(LeverArmCrossNormal);
-		FVector RotationalComponent = FVector::CrossProduct(InertiaInverseCrossResult, ContactOffset);
-		float EffectiveNormalMass = (1.0f / Mass) + FVector::DotProduct(Hit.Normal, RotationalComponent);
-		
-		float NormalImpulseMagnitude = -(1.f + RestitutionCoefficient) * RelativeNormalVelocity / EffectiveNormalMass;
-		FVector CollisionImpulse = NormalImpulseMagnitude * Hit.Normal;
-		
-		// Optional: Visualize the collision impulse.
-		/*
-		DrawDebugDirectionalArrow(
-			GetWorld(),
-			ContactImpactPoint,
-			ContactImpactPoint + CollisionImpulse,
-			10.f,
-			FColor::Red,
-			false,
-			0.1f
-		);
-		*/
-		
-		LinearVelocity += CollisionImpulse / Mass;
-		FVector AngularTorque = FVector::CrossProduct(ContactOffset, CollisionImpulse);
-		AngularVelocity += WorldInertiaTensorInverse.TransformVector(AngularTorque);
-		
-		// ----------------------------------------------------------------
-		// 2) Resolve Friction Impulse
-		// ----------------------------------------------------------------
-		ContactRelativeVelocity = LinearVelocity + FVector::CrossProduct(AngularVelocity, ContactOffset);
-		FVector PostCollisionNormalVelocity = FVector::DotProduct(ContactRelativeVelocity, Hit.Normal) * Hit.Normal;
-		FVector PostCollisionTangentialVelocity = ContactRelativeVelocity - PostCollisionNormalVelocity;
-		float TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
-		
-		if (TangentialVelocityMagnitude < KINDA_SMALL_NUMBER && AngularVelocity.Size() > KINDA_SMALL_NUMBER)
-		{
-			FVector InducedSlipVelocity = FVector::CrossProduct(AngularVelocity, ContactOffset);
-			PostCollisionTangentialVelocity = InducedSlipVelocity;
-			TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
-		}
+    // Retrieve the center of mass and current orientation of the physics body.
+    FVector CenterOfMass = PrimitiveComponent->GetCenterOfMass();
+    FQuat CurrentOrientation = PrimitiveComponent->GetComponentQuat();
+    
+    // Compute the offset from the center of mass to the contact impact point.
+    FVector ContactImpactPoint = Hit.ImpactPoint;
+    FVector ContactOffset = ContactImpactPoint - CenterOfMass;
+    
+    // Calculate the relative velocity at the contact point.
+    FVector ContactRelativeVelocity = LinearVelocity + FVector::CrossProduct(AngularVelocity, ContactOffset);
+    
+    // Determine the velocity component along the collision normal.
+    float RelativeNormalVelocity = FVector::DotProduct(ContactRelativeVelocity, Hit.Normal);
+    
+    // Build the local inertia tensor matrix using the body's inertia tensor diagonal.
+    FVector LocalInertiaTensorDiagonal = PrimitiveComponent->BodyInstance.GetBodyInertiaTensor();
+    FMatrix LocalInertiaTensorMatrix = FMatrix::Identity;
+    LocalInertiaTensorMatrix.M[0][0] = LocalInertiaTensorDiagonal.X;
+    LocalInertiaTensorMatrix.M[1][1] = LocalInertiaTensorDiagonal.Y;
+    LocalInertiaTensorMatrix.M[2][2] = LocalInertiaTensorDiagonal.Z;
+    
+    // Transform the local inertia tensor to world space.
+    FMatrix RotationMatrix = FRotationMatrix::Make(CurrentOrientation);
+    FMatrix WorldInertiaTensor = RotationMatrix * LocalInertiaTensorMatrix * RotationMatrix.GetTransposed();
+    FMatrix WorldInertiaTensorInverse = WorldInertiaTensor.InverseFast();
+    
+    // ----------------------------------------------------------------
+    // 1) Resolve Normal Collision Impulse
+    // ----------------------------------------------------------------
+    if (RelativeNormalVelocity < -KINDA_SMALL_NUMBER)
+    {
+        FVector LeverArmCrossNormal = FVector::CrossProduct(ContactOffset, Hit.Normal);
+        FVector InertiaInverseCrossResult = WorldInertiaTensorInverse.TransformVector(LeverArmCrossNormal);
+        FVector RotationalComponent = FVector::CrossProduct(InertiaInverseCrossResult, ContactOffset);
+        
+        // Add small regularization to prevent instability when dividing
+        float RegularizationTerm = 0.0001f;
+        float EffectiveNormalMass = (1.0f / Mass) + FVector::DotProduct(Hit.Normal, RotationalComponent) + RegularizationTerm;
+        
+        float NormalImpulseMagnitude = -(1.f + RestitutionCoefficient) * RelativeNormalVelocity / EffectiveNormalMass;
+        FVector CollisionImpulse = NormalImpulseMagnitude * Hit.Normal;
+        
+        LinearVelocity += CollisionImpulse / Mass;
+        FVector AngularTorque = FVector::CrossProduct(ContactOffset, CollisionImpulse);
+        AngularVelocity += WorldInertiaTensorInverse.TransformVector(AngularTorque);
+        
+        // ----------------------------------------------------------------
+        // 2) Resolve Friction Impulse
+        // ----------------------------------------------------------------
+        ContactRelativeVelocity = LinearVelocity + FVector::CrossProduct(AngularVelocity, ContactOffset);
+        FVector PostCollisionNormalVelocity = FVector::DotProduct(ContactRelativeVelocity, Hit.Normal) * Hit.Normal;
+        FVector PostCollisionTangentialVelocity = ContactRelativeVelocity - PostCollisionNormalVelocity;
+        float TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
 
-		if (TangentialVelocityMagnitude > KINDA_SMALL_NUMBER)
-		{
-			FVector FrictionDirection = PostCollisionTangentialVelocity / TangentialVelocityMagnitude;
-			FVector LeverArmCrossFriction = FVector::CrossProduct(ContactOffset, FrictionDirection);
-			FVector InertiaInverseCrossFriction = WorldInertiaTensorInverse.TransformVector(LeverArmCrossFriction);
-			FVector RotationalFrictionComponent = FVector::CrossProduct(InertiaInverseCrossFriction, ContactOffset);
-			float EffectiveFrictionMass = (1.0f / Mass) + FVector::DotProduct(FrictionDirection, RotationalFrictionComponent);
-	
-			float CandidateFrictionImpulse = -FVector::DotProduct(PostCollisionTangentialVelocity, FrictionDirection) / EffectiveFrictionMass;
-	
-			float MaxStaticImpulse = StaticFrictionCoefficient * FMath::Abs(NormalImpulseMagnitude);
-			float MaxDynamicImpulse = DynamicFrictionCoefficient * FMath::Abs(NormalImpulseMagnitude);
-	
-			float FinalFrictionImpulseMagnitude = 0.f;
-			if (FMath::Abs(CandidateFrictionImpulse) <= MaxStaticImpulse)
-			{
-				FinalFrictionImpulseMagnitude = CandidateFrictionImpulse;
-			}
-			else
-			{
-				FinalFrictionImpulseMagnitude = -MaxDynamicImpulse * FMath::Sign(FVector::DotProduct(PostCollisionTangentialVelocity, FrictionDirection));
-			}
-	
-			FVector FrictionImpulse = FinalFrictionImpulseMagnitude * FrictionDirection;
-			LinearVelocity += FrictionImpulse / Mass;
-			FVector FrictionAngularTorque = FVector::CrossProduct(ContactOffset, FrictionImpulse);
-			AngularVelocity += WorldInertiaTensorInverse.TransformVector(FrictionAngularTorque);
-		}
-	}
+        // Introduce a small bias to prevent exactly zero slip
+        const float SlipBias = 0.01f; 
+        if (TangentialVelocityMagnitude < KINDA_SMALL_NUMBER)
+        {
+            FVector InducedSlipVelocity = FVector::CrossProduct(AngularVelocity, ContactOffset);
+            // Blend instead of fully replacing the velocity
+            PostCollisionTangentialVelocity = FMath::Lerp(PostCollisionTangentialVelocity, InducedSlipVelocity, 0.5f);
+            TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
+        }
+
+        if (TangentialVelocityMagnitude > KINDA_SMALL_NUMBER)
+        {
+            FVector FrictionDirection = PostCollisionTangentialVelocity / TangentialVelocityMagnitude;
+            FVector LeverArmCrossFriction = FVector::CrossProduct(ContactOffset, FrictionDirection);
+            FVector InertiaInverseCrossFriction = WorldInertiaTensorInverse.TransformVector(LeverArmCrossFriction);
+            FVector RotationalFrictionComponent = FVector::CrossProduct(InertiaInverseCrossFriction, ContactOffset);
+
+            // Regularized effective friction mass
+            float EffectiveFrictionMass = (1.0f / Mass) + FVector::DotProduct(FrictionDirection, RotationalFrictionComponent) + RegularizationTerm;
+
+            float CandidateFrictionImpulse = -FVector::DotProduct(PostCollisionTangentialVelocity, FrictionDirection) / EffectiveFrictionMass;
+
+            // Smooth transition between static and dynamic friction using a blend function
+            float MaxStaticImpulse = StaticFrictionCoefficient * FMath::Abs(NormalImpulseMagnitude);
+            float MaxDynamicImpulse = DynamicFrictionCoefficient * FMath::Abs(NormalImpulseMagnitude);
+
+            float FrictionBlendFactor = FMath::Clamp(TangentialVelocityMagnitude / SlipBias, 0.0f, 1.0f);
+            float BlendedFrictionImpulse = FMath::Lerp(MaxStaticImpulse, MaxDynamicImpulse, FrictionBlendFactor);
+
+            float FinalFrictionImpulseMagnitude = 0.f;
+            if (FMath::Abs(CandidateFrictionImpulse) <= BlendedFrictionImpulse)
+            {
+                FinalFrictionImpulseMagnitude = CandidateFrictionImpulse;
+            }
+            else
+            {
+                FinalFrictionImpulseMagnitude = -BlendedFrictionImpulse * FMath::Sign(FVector::DotProduct(PostCollisionTangentialVelocity, FrictionDirection));
+            }
+
+            FVector FrictionImpulse = FinalFrictionImpulseMagnitude * FrictionDirection;
+            LinearVelocity += FrictionImpulse / Mass;
+            FVector FrictionAngularTorque = FVector::CrossProduct(ContactOffset, FrictionImpulse);
+            AngularVelocity += WorldInertiaTensorInverse.TransformVector(FrictionAngularTorque);
+        }
+    }
 }
