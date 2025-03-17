@@ -1,56 +1,33 @@
 ﻿#include "KPhysics.h"
 #include "GameFramework/Actor.h"
 #include "Components/PrimitiveComponent.h"
-#include "DrawDebugHelpers.h" // Optional: for visualizing impulses
-
-// Dot and Cross product functions for DVector
-inline double Dot(const DVector& a, const DVector& b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-inline DVector Cross(const DVector& a, const DVector& b) {
-    return DVector(
-        a.y * b.z - a.z * b.y,
-        a.z * b.x - a.x * b.z,
-        a.x * b.y - a.y * b.x
-    );
-}
-
-// Utility functions for double precision.
-inline double Lerp(double A, double B, double Alpha) {
-    return A + (B - A) * Alpha;
-}
-inline double Clamp(double Value, double Min, double Max) {
-    return (Value < Min) ? Min : (Value > Max ? Max : Value);
-}
-
-const double KINDA_SMALL_NUMBER_D = 1e-6;
 
 /////////////////////////////////////////////////////
 // Constructor and Initialization
 /////////////////////////////////////////////////////
 
 UKPhysics::UKPhysics() 
-	: RootPrimitive(nullptr)
+    : RootPrimitive(nullptr)
 {
-	PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bCanEverTick = true;
 }
 
 void UKPhysics::BeginPlay()
 {
-	Super::BeginPlay();
-	
-	RootPrimitive = Cast<UPrimitiveComponent>(GetOwner()->GetRootComponent());
-	if (!RootPrimitive)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("KPhysics: Actor's RootComponent is not a UPrimitiveComponent."));
-		return;
-	}
+    Super::BeginPlay();
+    
+    RootPrimitive = Cast<UPrimitiveComponent>(GetOwner()->GetRootComponent());
+    if (!RootPrimitive)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("KPhysics: Actor's RootComponent is not a UPrimitiveComponent."));
+        return;
+    }
 
-	RootPrimitive->SetMassOverrideInKg(NAME_None, Mass, true);
-	RootPrimitive->RecreatePhysicsState();
-	RootPrimitive->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	RootPrimitive->SetCollisionResponseToAllChannels(ECR_Block);
-	RootPrimitive->SetSimulatePhysics(false);
+    RootPrimitive->SetMassOverrideInKg(NAME_None, Mass, true);
+    RootPrimitive->RecreatePhysicsState();
+    RootPrimitive->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    RootPrimitive->SetCollisionResponseToAllChannels(ECR_Block);
+    RootPrimitive->SetSimulatePhysics(false);
 }
 
 void UKPhysics::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -61,9 +38,9 @@ void UKPhysics::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompon
     {
         return;
     }
-	
+    
     // Use double for substep timing
-    const double TargetSubstepDeltaTime = 1.0 / static_cast<double>(NumHzPhysics);
+    const double TargetSubstepDeltaTime = 1.0 / NumHzPhysics;
     int DynamicSubsteps = static_cast<int>(std::ceil(DeltaTime / TargetSubstepDeltaTime));
     DynamicSubsteps = FMath::Max(1, DynamicSubsteps);
     const double SubstepDeltaTime = DeltaTime / static_cast<double>(DynamicSubsteps);
@@ -71,8 +48,8 @@ void UKPhysics::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompon
     for (int SubstepIndex = 0; SubstepIndex < DynamicSubsteps; ++SubstepIndex)
     {
         // 1) Damping (using double math)
-        LinearVelocity = LinearVelocity - (LinearVelocity * (static_cast<double>(LinearDampingFactor) * SubstepDeltaTime));
-        AngularVelocity = AngularVelocity - (AngularVelocity * (static_cast<double>(AngularDampingFactor) * SubstepDeltaTime));
+        LinearVelocity = LinearVelocity - LinearVelocity * (LinearDampingFactor * SubstepDeltaTime);
+        AngularVelocity = AngularVelocity - AngularVelocity * (AngularDampingFactor * SubstepDeltaTime);
 
         // 2) Gravity: convert Unreal’s gravity (float) to double
         double GravityZ = GetWorld()->GetGravityZ();
@@ -84,7 +61,7 @@ void UKPhysics::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompon
             DVector DeltaAngularVelocity = AngularVelocity * SubstepDeltaTime;
             double RotationAngle = DeltaAngularVelocity.Size();
 
-            if (RotationAngle > KINDA_SMALL_NUMBER_D)
+            if (RotationAngle > DSmall_Number)
             {
                 DVector RotationAxis = DeltaAngularVelocity / RotationAngle;
                 double HalfRotationAngle = 0.5 * RotationAngle;
@@ -129,146 +106,96 @@ void UKPhysics::ResolveCollision(FHitResult& Hit, UPrimitiveComponent* Primitive
     DVector ContactImpactPoint(Hit.ImpactPoint);
     DVector ContactOffset = ContactImpactPoint - CenterOfMass;
     
-    DVector ContactRelativeVelocity = LinearVelocity + Cross(AngularVelocity, ContactOffset);
+    DVector ContactRelativeVelocity = LinearVelocity + DVector::Cross(AngularVelocity, ContactOffset);
     
     DVector HitNormal(Hit.Normal);
-    double RelativeNormalVelocity = Dot(ContactRelativeVelocity, HitNormal);
+    double RelativeNormalVelocity = DVector::Dot(ContactRelativeVelocity, HitNormal);
     
+    // Convert the local inertia tensor diagonal into a DMatrix3x3.
     DVector LocalInertiaTensorDiagonal(PrimitiveComponent->BodyInstance.GetBodyInertiaTensor());
-    double LocalInertiaTensor[3][3] = {
-        {LocalInertiaTensorDiagonal.x, 0.0, 0.0},
-        {0.0, LocalInertiaTensorDiagonal.y, 0.0},
-        {0.0, 0.0, LocalInertiaTensorDiagonal.z}
-    };
+    DMatrix3x3 LocalInertia(
+        LocalInertiaTensorDiagonal.x, 0.0, 0.0,
+        0.0, LocalInertiaTensorDiagonal.y, 0.0,
+        0.0, 0.0, LocalInertiaTensorDiagonal.z
+    );
     
+    // Build the rotation matrix from the current orientation.
     FMatrix RotationMatrixF = FRotationMatrix::Make(CurrentOrientation);
-    double RotationMatrix[3][3] = {
-        {static_cast<double>(RotationMatrixF.M[0][0]), static_cast<double>(RotationMatrixF.M[0][1]), static_cast<double>(RotationMatrixF.M[0][2])},
-        {static_cast<double>(RotationMatrixF.M[1][0]), static_cast<double>(RotationMatrixF.M[1][1]), static_cast<double>(RotationMatrixF.M[1][2])},
-        {static_cast<double>(RotationMatrixF.M[2][0]), static_cast<double>(RotationMatrixF.M[2][1]), static_cast<double>(RotationMatrixF.M[2][2])}
-    };
+    DMatrix3x3 R(
+        RotationMatrixF.M[0][0], RotationMatrixF.M[0][1], RotationMatrixF.M[0][2],
+        RotationMatrixF.M[1][0], RotationMatrixF.M[1][1], RotationMatrixF.M[1][2],
+        RotationMatrixF.M[2][0], RotationMatrixF.M[2][1], RotationMatrixF.M[2][2]
+    );
     
-    double WorldInertiaTensor[3][3] = { {0.0} };
-    double TempMatrix[3][3] = { {0.0} };
-    for (int i = 0; i < 3; ++i)
-    {
-        for (int j = 0; j < 3; ++j)
-        {
-            for (int k = 0; k < 3; ++k)
-            {
-                TempMatrix[i][j] += RotationMatrix[i][k] * LocalInertiaTensor[k][j];
-            }
-        }
-    }
-    for (int i = 0; i < 3; ++i)
-    {
-        for (int j = 0; j < 3; ++j)
-        {
-            for (int k = 0; k < 3; ++k)
-            {
-                WorldInertiaTensor[i][j] += TempMatrix[i][k] * RotationMatrix[j][k];
-            }
-        }
-    }
+    // Compute the world inertia tensor using: WorldInertia = R * LocalInertia * Transpose(R)
+    DMatrix3x3 WorldInertiaTensor = R * LocalInertia * DMatrix3x3::Transpose(R);
     
-    double det = WorldInertiaTensor[0][0]*(WorldInertiaTensor[1][1]*WorldInertiaTensor[2][2] - WorldInertiaTensor[1][2]*WorldInertiaTensor[2][1])
-                - WorldInertiaTensor[0][1]*(WorldInertiaTensor[1][0]*WorldInertiaTensor[2][2] - WorldInertiaTensor[1][2]*WorldInertiaTensor[2][0])
-                + WorldInertiaTensor[0][2]*(WorldInertiaTensor[1][0]*WorldInertiaTensor[2][1] - WorldInertiaTensor[1][1]*WorldInertiaTensor[2][0]);
-    double WorldInertiaTensorInverse[3][3] = { {0.0} };
-    if (std::abs(det) > 1e-8)
-    {
-        WorldInertiaTensorInverse[0][0] =  (WorldInertiaTensor[1][1]*WorldInertiaTensor[2][2] - WorldInertiaTensor[1][2]*WorldInertiaTensor[2][1]) / det;
-        WorldInertiaTensorInverse[0][1] = -(WorldInertiaTensor[0][1]*WorldInertiaTensor[2][2] - WorldInertiaTensor[0][2]*WorldInertiaTensor[2][1]) / det;
-        WorldInertiaTensorInverse[0][2] =  (WorldInertiaTensor[0][1]*WorldInertiaTensor[1][2] - WorldInertiaTensor[0][2]*WorldInertiaTensor[1][1]) / det;
-        WorldInertiaTensorInverse[1][0] = -(WorldInertiaTensor[1][0]*WorldInertiaTensor[2][2] - WorldInertiaTensor[1][2]*WorldInertiaTensor[2][0]) / det;
-        WorldInertiaTensorInverse[1][1] =  (WorldInertiaTensor[0][0]*WorldInertiaTensor[2][2] - WorldInertiaTensor[0][2]*WorldInertiaTensor[2][0]) / det;
-        WorldInertiaTensorInverse[1][2] = -(WorldInertiaTensor[0][0]*WorldInertiaTensor[1][2] - WorldInertiaTensor[0][2]*WorldInertiaTensor[1][0]) / det;
-        WorldInertiaTensorInverse[2][0] =  (WorldInertiaTensor[1][0]*WorldInertiaTensor[2][1] - WorldInertiaTensor[1][1]*WorldInertiaTensor[2][0]) / det;
-        WorldInertiaTensorInverse[2][1] = -(WorldInertiaTensor[0][0]*WorldInertiaTensor[2][1] - WorldInertiaTensor[0][1]*WorldInertiaTensor[2][0]) / det;
-        WorldInertiaTensorInverse[2][2] =  (WorldInertiaTensor[0][0]*WorldInertiaTensor[1][1] - WorldInertiaTensor[0][1]*WorldInertiaTensor[1][0]) / det;
-    }
-    else
+    double det = DMatrix3x3::Determinant(WorldInertiaTensor);
+    if (std::abs(det) < DSmall_Number)
     {
         UE_LOG(LogTemp, Warning, TEXT("Singular inertia tensor matrix encountered in collision resolution."));
         return;
     }
+    DMatrix3x3 WorldInertiaTensorInverse = DMatrix3x3::Inverse(WorldInertiaTensor);
     
     // 1) Resolve Normal Collision Impulse
-    if (RelativeNormalVelocity < -KINDA_SMALL_NUMBER_D)
+    if (RelativeNormalVelocity < -DSmall_Number)
     {
-        DVector LeverArmCrossNormal = Cross(ContactOffset, HitNormal);
-        DVector InertiaInverseCrossResult(
-            WorldInertiaTensorInverse[0][0] * LeverArmCrossNormal.x + WorldInertiaTensorInverse[0][1] * LeverArmCrossNormal.y + WorldInertiaTensorInverse[0][2] * LeverArmCrossNormal.z,
-            WorldInertiaTensorInverse[1][0] * LeverArmCrossNormal.x + WorldInertiaTensorInverse[1][1] * LeverArmCrossNormal.y + WorldInertiaTensorInverse[1][2] * LeverArmCrossNormal.z,
-            WorldInertiaTensorInverse[2][0] * LeverArmCrossNormal.x + WorldInertiaTensorInverse[2][1] * LeverArmCrossNormal.y + WorldInertiaTensorInverse[2][2] * LeverArmCrossNormal.z
-        );
-        DVector RotationalComponent = Cross(InertiaInverseCrossResult, ContactOffset);
+        DVector LeverArmCrossNormal = DVector::Cross(ContactOffset, HitNormal);
+        DVector InertiaInverseCrossResult = WorldInertiaTensorInverse * LeverArmCrossNormal;
+        DVector RotationalComponent = DVector::Cross(InertiaInverseCrossResult, ContactOffset);
         
         double RegularizationTerm = 0.0001;
-        double EffectiveNormalMass = (1.0 / static_cast<double>(Mass)) + Dot(HitNormal, RotationalComponent) + RegularizationTerm;
+        double EffectiveNormalMass = (1.0 / Mass) + DVector::Dot(HitNormal, RotationalComponent) + RegularizationTerm;
         
-        double NormalImpulseMagnitude = -(1.0 + static_cast<double>(RestitutionCoefficient)) * RelativeNormalVelocity / EffectiveNormalMass;
+        double NormalImpulseMagnitude = -(1.0 + RestitutionCoefficient) * RelativeNormalVelocity / EffectiveNormalMass;
         DVector CollisionImpulse = HitNormal * NormalImpulseMagnitude;
         
-        LinearVelocity = LinearVelocity + CollisionImpulse / static_cast<double>(Mass);
-        DVector AngularTorque = Cross(ContactOffset, CollisionImpulse);
-        DVector AngularVelocityDelta(
-            WorldInertiaTensorInverse[0][0] * AngularTorque.x + WorldInertiaTensorInverse[0][1] * AngularTorque.y + WorldInertiaTensorInverse[0][2] * AngularTorque.z,
-            WorldInertiaTensorInverse[1][0] * AngularTorque.x + WorldInertiaTensorInverse[1][1] * AngularTorque.y + WorldInertiaTensorInverse[1][2] * AngularTorque.z,
-            WorldInertiaTensorInverse[2][0] * AngularTorque.x + WorldInertiaTensorInverse[2][1] * AngularTorque.y + WorldInertiaTensorInverse[2][2] * AngularTorque.z
-        );
+        LinearVelocity = LinearVelocity + CollisionImpulse / Mass;
+        DVector AngularTorque = DVector::Cross(ContactOffset, CollisionImpulse);
+        DVector AngularVelocityDelta = WorldInertiaTensorInverse * AngularTorque;
         AngularVelocity = AngularVelocity + AngularVelocityDelta;
         
         // 2) Resolve Friction Impulse
-        ContactRelativeVelocity = LinearVelocity + Cross(AngularVelocity, ContactOffset);
-        DVector PostCollisionNormalVelocity = HitNormal * Dot(ContactRelativeVelocity, HitNormal);
+        ContactRelativeVelocity = LinearVelocity + DVector::Cross(AngularVelocity, ContactOffset);
+        DVector PostCollisionNormalVelocity = HitNormal * DVector::Dot(ContactRelativeVelocity, HitNormal);
         DVector PostCollisionTangentialVelocity = ContactRelativeVelocity - PostCollisionNormalVelocity;
         double TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
 
-        if (TangentialVelocityMagnitude < KINDA_SMALL_NUMBER_D)
+        if (TangentialVelocityMagnitude < DSmall_Number)
         {
-        	DVector InducedSlipVelocity = Cross(AngularVelocity, ContactOffset);
-        	if (InducedSlipVelocity.Size() < MinInducedSlip)
-        	{
-        		InducedSlipVelocity = InducedSlipVelocity.GetSafeNormal() * MinInducedSlip;
-        	}
-        	PostCollisionTangentialVelocity = PostCollisionTangentialVelocity * (1.0 - 0.5) + InducedSlipVelocity * 0.5;
+            DVector InducedSlipVelocity = DVector::Cross(AngularVelocity, ContactOffset);
+            if (InducedSlipVelocity.Size() < MinInducedSlip)
+            {
+                InducedSlipVelocity = InducedSlipVelocity.GetSafeNormal() * MinInducedSlip;
+            }
+            PostCollisionTangentialVelocity = DVector::Lerp(PostCollisionTangentialVelocity, InducedSlipVelocity, InducedSlipBlend);
             TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
         }
 
-        if (TangentialVelocityMagnitude > KINDA_SMALL_NUMBER_D)
+        if (TangentialVelocityMagnitude > DSmall_Number)
         {
-	        DVector FrictionDirection = PostCollisionTangentialVelocity / TangentialVelocityMagnitude;
-            DVector LeverArmCrossFriction = Cross(ContactOffset, FrictionDirection);
-            DVector InertiaInverseCrossFriction(
-                WorldInertiaTensorInverse[0][0] * LeverArmCrossFriction.x + WorldInertiaTensorInverse[0][1] * LeverArmCrossFriction.y + WorldInertiaTensorInverse[0][2] * LeverArmCrossFriction.z,
-                WorldInertiaTensorInverse[1][0] * LeverArmCrossFriction.x + WorldInertiaTensorInverse[1][1] * LeverArmCrossFriction.y + WorldInertiaTensorInverse[1][2] * LeverArmCrossFriction.z,
-                WorldInertiaTensorInverse[2][0] * LeverArmCrossFriction.x + WorldInertiaTensorInverse[2][1] * LeverArmCrossFriction.y + WorldInertiaTensorInverse[2][2] * LeverArmCrossFriction.z
-            );
-            DVector RotationalFrictionComponent = Cross(InertiaInverseCrossFriction, ContactOffset);
+            DVector FrictionDirection = PostCollisionTangentialVelocity / TangentialVelocityMagnitude;
+            DVector LeverArmCrossFriction = DVector::Cross(ContactOffset, FrictionDirection);
+            DVector InertiaInverseCrossFriction = WorldInertiaTensorInverse * LeverArmCrossFriction;
+            DVector RotationalFrictionComponent = DVector::Cross(InertiaInverseCrossFriction, ContactOffset);
 
-            double EffectiveFrictionMass = (1.0 / static_cast<double>(Mass)) + Dot(FrictionDirection, RotationalFrictionComponent) + RegularizationTerm;
+            double EffectiveFrictionMass = 1.0 / Mass + DVector::Dot(FrictionDirection, RotationalFrictionComponent) + RegularizationTerm;
 
-            double CandidateFrictionImpulse = -Dot(PostCollisionTangentialVelocity, FrictionDirection) / EffectiveFrictionMass;
+            double CandidateFrictionImpulse = -DVector::Dot(PostCollisionTangentialVelocity, FrictionDirection) / EffectiveFrictionMass;
 
             double MaxStaticImpulse = StaticFrictionCoefficient * std::abs(NormalImpulseMagnitude);
             double MaxDynamicImpulse = DynamicFrictionCoefficient * std::abs(NormalImpulseMagnitude);
 
-            double FrictionBlendFactor = Clamp(TangentialVelocityMagnitude / static_cast<double>(SlipBias), 0.0, 1.0);
-            double BlendedFrictionImpulse = Lerp(MaxStaticImpulse, MaxDynamicImpulse, FrictionBlendFactor);
+            double FrictionBlendFactor = DMath::Clamp(TangentialVelocityMagnitude / SlipBias, 0.0, 1.0);
+            double BlendedFrictionImpulse = DMath::Lerp(MaxStaticImpulse, MaxDynamicImpulse, FrictionBlendFactor);
 
-            double FinalFrictionImpulseMagnitude = (std::abs(CandidateFrictionImpulse) <= BlendedFrictionImpulse) ?
-                CandidateFrictionImpulse :
-                -BlendedFrictionImpulse * ((Dot(PostCollisionTangentialVelocity, FrictionDirection) < 0) ? -1.0 : 1.0);
+            double FinalFrictionImpulseMagnitude = DMath::Clamp(CandidateFrictionImpulse, -BlendedFrictionImpulse, BlendedFrictionImpulse);
 
             DVector FrictionImpulse = FrictionDirection * FinalFrictionImpulseMagnitude;
-            LinearVelocity = LinearVelocity + FrictionImpulse / static_cast<double>(Mass);
-            DVector FrictionAngularTorque = Cross(ContactOffset, FrictionImpulse);
-            DVector FrictionAngularDelta(
-                WorldInertiaTensorInverse[0][0] * FrictionAngularTorque.x + WorldInertiaTensorInverse[0][1] * FrictionAngularTorque.y + WorldInertiaTensorInverse[0][2] * FrictionAngularTorque.z,
-                WorldInertiaTensorInverse[1][0] * FrictionAngularTorque.x + WorldInertiaTensorInverse[1][1] * FrictionAngularTorque.y + WorldInertiaTensorInverse[1][2] * FrictionAngularTorque.z,
-                WorldInertiaTensorInverse[2][0] * FrictionAngularTorque.x + WorldInertiaTensorInverse[2][1] * FrictionAngularTorque.y + WorldInertiaTensorInverse[2][2] * FrictionAngularTorque.z
-            );
+            LinearVelocity = LinearVelocity + FrictionImpulse / Mass;
+            DVector FrictionAngularTorque = DVector::Cross(ContactOffset, FrictionImpulse);
+            DVector FrictionAngularDelta = WorldInertiaTensorInverse * FrictionAngularTorque;
             AngularVelocity = AngularVelocity + FrictionAngularDelta;
         }
     }
