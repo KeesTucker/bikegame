@@ -1,4 +1,7 @@
 ﻿#include "KPhysicsMeshComponent.h"
+
+#include "bikegame/Types/DMath.h"
+#include "bikegame/Types/DMatrix3x3.h"
 #include "GameFramework/Actor.h"
 #include "Components/PrimitiveComponent.h"
 
