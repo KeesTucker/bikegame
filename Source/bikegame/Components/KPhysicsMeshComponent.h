@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "bikegame/Types/DVector.h"
+#include "bikegame/Types/DoubleVector.h"
 #include "Components/StaticMeshComponent.h"
 #include "KPhysicsMeshComponent.generated.h"
 
@@ -64,6 +64,6 @@ private:
 	void ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent);
 	
 	// Current velocities.
-	DVector LinearVelocity;
-	DVector AngularVelocity;
+	FDoubleVector LinearVelocity;
+	FDoubleVector AngularVelocity;
 };

@@ -1,7 +1,8 @@
 ﻿#include "KPhysicsMeshComponent.h"
 
-#include "bikegame/Types/DMath.h"
-#include "bikegame/Types/DMatrix3x3.h"
+#include "bikegame/Types/DoubleMath.h"
+#include "bikegame/Types/DoubleMatrix3X3.h"
+#include "bikegame/Types/DoubleMatrix3X3.h"
 #include "GameFramework/Actor.h"
 #include "Components/PrimitiveComponent.h"
 
@@ -44,23 +45,23 @@ void UKPhysicsMeshComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
         // 2) Apply gravity.
         double GravityZ = GetWorld()->GetGravityZ();
-        LinearVelocity = LinearVelocity + DVector(0.0, 0.0, GravityZ) * SubstepDeltaTime;
+        LinearVelocity = LinearVelocity + FDoubleVector(0.0, 0.0, GravityZ) * SubstepDeltaTime;
 
         // 3) Update orientation using angular velocity.
         FQuat CurrentOrientation = GetComponentQuat();
         {
-            DVector DeltaAngularVelocity = AngularVelocity * SubstepDeltaTime;
+            FDoubleVector DeltaAngularVelocity = AngularVelocity * SubstepDeltaTime;
             double RotationAngle = DeltaAngularVelocity.Size();
 
             if (RotationAngle > DSmall_Number)
             {
-                DVector RotationAxis = DeltaAngularVelocity / RotationAngle;
+                FDoubleVector RotationAxis = DeltaAngularVelocity / RotationAngle;
                 double HalfRotationAngle = 0.5 * RotationAngle;
                 double SineHalfAngle = std::sin(HalfRotationAngle);
                 FQuat RotationDeltaQuat(
-                    static_cast<float>(RotationAxis.x * SineHalfAngle),
-                    static_cast<float>(RotationAxis.y * SineHalfAngle),
-                    static_cast<float>(RotationAxis.z * SineHalfAngle),
+                    static_cast<float>(RotationAxis.X * SineHalfAngle),
+                    static_cast<float>(RotationAxis.Y * SineHalfAngle),
+                    static_cast<float>(RotationAxis.Z * SineHalfAngle),
                     static_cast<float>(std::cos(HalfRotationAngle))
                 );
                 CurrentOrientation = RotationDeltaQuat * CurrentOrientation;
@@ -70,8 +71,8 @@ void UKPhysicsMeshComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
         // 4) Linear movement.
         FHitResult LinearHitResult;
-        FVector LinearOffset = (LinearVelocity * SubstepDeltaTime);
-        AddWorldOffset(LinearOffset, true, &LinearHitResult);
+        FDoubleVector LinearOffset = LinearVelocity * SubstepDeltaTime;
+        AddWorldOffset(FVector(LinearOffset), true, &LinearHitResult);
         if (LinearHitResult.bBlockingHit)
         {
             ResolveCollision(LinearHitResult, this);
@@ -91,102 +92,102 @@ void UKPhysicsMeshComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 void UKPhysicsMeshComponent::ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent)
 {
-    DVector CenterOfMass(PrimitiveComponent->GetCenterOfMass());
+    FDoubleVector CenterOfMass(PrimitiveComponent->GetCenterOfMass());
     FQuat CurrentOrientation = PrimitiveComponent->GetComponentQuat();
     
-    DVector ContactImpactPoint(Hit.ImpactPoint);
-    DVector ContactOffset = ContactImpactPoint - CenterOfMass;
+    FDoubleVector ContactImpactPoint(Hit.ImpactPoint);
+    FDoubleVector ContactOffset = ContactImpactPoint - CenterOfMass;
     
-    DVector ContactRelativeVelocity = LinearVelocity + DVector::Cross(AngularVelocity, ContactOffset);
+    FDoubleVector ContactRelativeVelocity = LinearVelocity + FDoubleVector::Cross(AngularVelocity, ContactOffset);
     
-    DVector HitNormal(Hit.Normal);
-    double RelativeNormalVelocity = DVector::Dot(ContactRelativeVelocity, HitNormal);
+    FDoubleVector HitNormal(Hit.Normal);
+    double RelativeNormalVelocity = FDoubleVector::Dot(ContactRelativeVelocity, HitNormal);
     
     // Convert the local inertia tensor diagonal into a DMatrix3x3.
-    DVector LocalInertiaTensorDiagonal(PrimitiveComponent->BodyInstance.GetBodyInertiaTensor());
-    DMatrix3x3 LocalInertia(
-        LocalInertiaTensorDiagonal.x, 0.0, 0.0,
-        0.0, LocalInertiaTensorDiagonal.y, 0.0,
-        0.0, 0.0, LocalInertiaTensorDiagonal.z
+    FDoubleVector LocalInertiaTensorDiagonal(PrimitiveComponent->BodyInstance.GetBodyInertiaTensor());
+    FDoubleMatrix3X3 LocalInertia(
+        LocalInertiaTensorDiagonal.X, 0.0, 0.0,
+        0.0, LocalInertiaTensorDiagonal.Y, 0.0,
+        0.0, 0.0, LocalInertiaTensorDiagonal.Z
     );
     
     // Build the rotation matrix from the current orientation.
     FMatrix RotationMatrixF = FRotationMatrix::Make(CurrentOrientation);
-    DMatrix3x3 R(
+    FDoubleMatrix3X3 R(
         RotationMatrixF.M[0][0], RotationMatrixF.M[0][1], RotationMatrixF.M[0][2],
         RotationMatrixF.M[1][0], RotationMatrixF.M[1][1], RotationMatrixF.M[1][2],
         RotationMatrixF.M[2][0], RotationMatrixF.M[2][1], RotationMatrixF.M[2][2]
     );
     
     // Compute world inertia tensor.
-    DMatrix3x3 WorldInertiaTensor = R * LocalInertia * DMatrix3x3::Transpose(R);
+    FDoubleMatrix3X3 WorldInertiaTensor = R * LocalInertia * FDoubleMatrix3X3::Transpose(R);
     
-    double det = DMatrix3x3::Determinant(WorldInertiaTensor);
+    double det = FDoubleMatrix3X3::Determinant(WorldInertiaTensor);
     if (std::abs(det) < DSmall_Number)
     {
         UE_LOG(LogTemp, Warning, TEXT("Singular inertia tensor matrix encountered in collision resolution."));
         return;
     }
-    DMatrix3x3 WorldInertiaTensorInverse = DMatrix3x3::Inverse(WorldInertiaTensor);
+    FDoubleMatrix3X3 WorldInertiaTensorInverse = FDoubleMatrix3X3::Inverse(WorldInertiaTensor);
     
     // 1) Normal collision impulse.
     if (RelativeNormalVelocity < -DSmall_Number)
     {
-        DVector LeverArmCrossNormal = DVector::Cross(ContactOffset, HitNormal);
-        DVector InertiaInverseCrossResult = WorldInertiaTensorInverse * LeverArmCrossNormal;
-        DVector RotationalComponent = DVector::Cross(InertiaInverseCrossResult, ContactOffset);
+        FDoubleVector LeverArmCrossNormal = FDoubleVector::Cross(ContactOffset, HitNormal);
+        FDoubleVector InertiaInverseCrossResult = WorldInertiaTensorInverse * LeverArmCrossNormal;
+        FDoubleVector RotationalComponent = FDoubleVector::Cross(InertiaInverseCrossResult, ContactOffset);
         
         double RegularizationTerm = 0.0001;
-        double EffectiveNormalMass = (1.0 / Mass) + DVector::Dot(HitNormal, RotationalComponent) + RegularizationTerm;
+        double EffectiveNormalMass = (1.0 / Mass) + FDoubleVector::Dot(HitNormal, RotationalComponent) + RegularizationTerm;
         
         double NormalImpulseMagnitude = -(1.0 + RestitutionCoefficient) * RelativeNormalVelocity / EffectiveNormalMass;
-        DVector CollisionImpulse = HitNormal * NormalImpulseMagnitude;
+        FDoubleVector CollisionImpulse = HitNormal * NormalImpulseMagnitude;
         
         LinearVelocity = LinearVelocity + CollisionImpulse / Mass;
-        DVector AngularTorque = DVector::Cross(ContactOffset, CollisionImpulse);
-        DVector AngularVelocityDelta = WorldInertiaTensorInverse * AngularTorque;
+        FDoubleVector AngularTorque = FDoubleVector::Cross(ContactOffset, CollisionImpulse);
+        FDoubleVector AngularVelocityDelta = WorldInertiaTensorInverse * AngularTorque;
         AngularVelocity = AngularVelocity + AngularVelocityDelta;
         
         // 2) Friction impulse.
-        ContactRelativeVelocity = LinearVelocity + DVector::Cross(AngularVelocity, ContactOffset);
-        DVector PostCollisionNormalVelocity = HitNormal * DVector::Dot(ContactRelativeVelocity, HitNormal);
-        DVector PostCollisionTangentialVelocity = ContactRelativeVelocity - PostCollisionNormalVelocity;
+        ContactRelativeVelocity = LinearVelocity + FDoubleVector::Cross(AngularVelocity, ContactOffset);
+        FDoubleVector PostCollisionNormalVelocity = HitNormal * FDoubleVector::Dot(ContactRelativeVelocity, HitNormal);
+        FDoubleVector PostCollisionTangentialVelocity = ContactRelativeVelocity - PostCollisionNormalVelocity;
         double TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
 
         if (TangentialVelocityMagnitude < DSmall_Number)
         {
-            DVector InducedSlipVelocity = DVector::Cross(AngularVelocity, ContactOffset);
+            FDoubleVector InducedSlipVelocity = FDoubleVector::Cross(AngularVelocity, ContactOffset);
             if (InducedSlipVelocity.Size() < MinInducedSlip)
             {
                 InducedSlipVelocity = InducedSlipVelocity.GetSafeNormal() * MinInducedSlip;
             }
-            PostCollisionTangentialVelocity = DVector::Lerp(PostCollisionTangentialVelocity, InducedSlipVelocity, InducedSlipBlend);
+            PostCollisionTangentialVelocity = FDoubleVector::Lerp(PostCollisionTangentialVelocity, InducedSlipVelocity, InducedSlipBlend);
             TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
         }
 
         if (TangentialVelocityMagnitude > DSmall_Number)
         {
-            DVector FrictionDirection = PostCollisionTangentialVelocity / TangentialVelocityMagnitude;
-            DVector LeverArmCrossFriction = DVector::Cross(ContactOffset, FrictionDirection);
-            DVector InertiaInverseCrossFriction = WorldInertiaTensorInverse * LeverArmCrossFriction;
-            DVector RotationalFrictionComponent = DVector::Cross(InertiaInverseCrossFriction, ContactOffset);
+            FDoubleVector FrictionDirection = PostCollisionTangentialVelocity / TangentialVelocityMagnitude;
+            FDoubleVector LeverArmCrossFriction = FDoubleVector::Cross(ContactOffset, FrictionDirection);
+            FDoubleVector InertiaInverseCrossFriction = WorldInertiaTensorInverse * LeverArmCrossFriction;
+            FDoubleVector RotationalFrictionComponent = FDoubleVector::Cross(InertiaInverseCrossFriction, ContactOffset);
 
-            double EffectiveFrictionMass = 1.0 / Mass + DVector::Dot(FrictionDirection, RotationalFrictionComponent) + RegularizationTerm;
+            double EffectiveFrictionMass = 1.0 / Mass + FDoubleVector::Dot(FrictionDirection, RotationalFrictionComponent) + RegularizationTerm;
 
-            double CandidateFrictionImpulse = -DVector::Dot(PostCollisionTangentialVelocity, FrictionDirection) / EffectiveFrictionMass;
+            double CandidateFrictionImpulse = -FDoubleVector::Dot(PostCollisionTangentialVelocity, FrictionDirection) / EffectiveFrictionMass;
 
             double MaxStaticImpulse = StaticFrictionCoefficient * std::abs(NormalImpulseMagnitude);
             double MaxDynamicImpulse = DynamicFrictionCoefficient * std::abs(NormalImpulseMagnitude);
 
-            double FrictionBlendFactor = DMath::Clamp(TangentialVelocityMagnitude / SlipBias, 0.0, 1.0);
-            double BlendedFrictionImpulse = DMath::Lerp(MaxStaticImpulse, MaxDynamicImpulse, FrictionBlendFactor);
+            double FrictionBlendFactor = FDoubleMath::Clamp(TangentialVelocityMagnitude / SlipBias, 0.0, 1.0);
+            double BlendedFrictionImpulse = FDoubleMath::Lerp(MaxStaticImpulse, MaxDynamicImpulse, FrictionBlendFactor);
 
-            double FinalFrictionImpulseMagnitude = DMath::Clamp(CandidateFrictionImpulse, -BlendedFrictionImpulse, BlendedFrictionImpulse);
+            double FinalFrictionImpulseMagnitude = FDoubleMath::Clamp(CandidateFrictionImpulse, -BlendedFrictionImpulse, BlendedFrictionImpulse);
 
-            DVector FrictionImpulse = FrictionDirection * FinalFrictionImpulseMagnitude;
+            FDoubleVector FrictionImpulse = FrictionDirection * FinalFrictionImpulseMagnitude;
             LinearVelocity = LinearVelocity + FrictionImpulse / Mass;
-            DVector FrictionAngularTorque = DVector::Cross(ContactOffset, FrictionImpulse);
-            DVector FrictionAngularDelta = WorldInertiaTensorInverse * FrictionAngularTorque;
+            FDoubleVector FrictionAngularTorque = FDoubleVector::Cross(ContactOffset, FrictionImpulse);
+            FDoubleVector FrictionAngularDelta = WorldInertiaTensorInverse * FrictionAngularTorque;
             AngularVelocity = AngularVelocity + FrictionAngularDelta;
         }
     }
