@@ -1,8 +1,8 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "Components/ActorComponent.h"
-#include "KPhysics.generated.h"
+#include "Components/StaticMeshComponent.h"
+#include "KPhysicsMeshComponent.generated.h"
 
 constexpr double DSmall_Number = 1e-8;
 
@@ -28,7 +28,6 @@ struct DVector {
     DVector(double _x, double _y, double _z) : x(_x), y(_y), z(_z) {}
     DVector(const FVector& vec) : x(vec.X), y(vec.Y), z(vec.Z) {}
 
-    // Conversion operator to FVector (Unreal uses float)
     operator FVector() const {
         return FVector(static_cast<float>(x),
                        static_cast<float>(y),
@@ -85,7 +84,6 @@ struct DMatrix3x3 {
     double m[3][3];
 
     DMatrix3x3() {
-        // Initialize to zero matrix
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
                 m[i][j] = 0.0;
@@ -99,7 +97,6 @@ struct DMatrix3x3 {
         m[2][0] = m20; m[2][1] = m21; m[2][2] = m22;
     }
 
-    // Matrix multiplication (this * other)
     DMatrix3x3 operator*(const DMatrix3x3& other) const {
         DMatrix3x3 result;
         for (int i = 0; i < 3; i++) {
@@ -113,7 +110,6 @@ struct DMatrix3x3 {
         return result;
     }
 
-    // Matrix-vector multiplication
     DVector operator*(const DVector& vec) const {
         return DVector(
             m[0][0] * vec.x + m[0][1] * vec.y + m[0][2] * vec.z,
@@ -122,14 +118,12 @@ struct DMatrix3x3 {
         );
     }
 
-    // Static helper: Identity matrix
     static DMatrix3x3 Identity() {
         return DMatrix3x3(1.0, 0.0, 0.0,
                           0.0, 1.0, 0.0,
                           0.0, 0.0, 1.0);
     }
 
-    // Static helper: Transpose of a matrix
     static DMatrix3x3 Transpose(const DMatrix3x3& mat) {
         return DMatrix3x3(
             mat.m[0][0], mat.m[1][0], mat.m[2][0],
@@ -138,18 +132,15 @@ struct DMatrix3x3 {
         );
     }
 
-    // Static helper: Determinant of a matrix
     static double Determinant(const DMatrix3x3& mat) {
         return mat.m[0][0]*(mat.m[1][1]*mat.m[2][2] - mat.m[1][2]*mat.m[2][1])
              - mat.m[0][1]*(mat.m[1][0]*mat.m[2][2] - mat.m[1][2]*mat.m[2][0])
              + mat.m[0][2]*(mat.m[1][0]*mat.m[2][1] - mat.m[1][1]*mat.m[2][0]);
     }
 
-    // Static helper: Inverse of a matrix
     static DMatrix3x3 Inverse(const DMatrix3x3& mat) {
         double det = Determinant(mat);
         if (std::abs(det) < 1e-8) {
-            // Log a warning as needed. Here we return the identity for safety.
             return Identity();
         }
         double invDet = 1.0 / det;
@@ -171,45 +162,42 @@ struct DMatrix3x3 {
 
 /**
  * UKPhysics is a custom physics simulation component.
- * It applies forces such as gravity, damping, and collision responses on the actor's root primitive component.
+ * It now inherits from UStaticMeshComponent and applies physics directly to itself.
  */
 UCLASS(ClassGroup=(Physics), meta=(BlueprintSpawnableComponent))
-class BIKEGAME_API UKPhysics : public UActorComponent
+class BIKEGAME_API UKPhysicsMeshComponent : public UStaticMeshComponent
 {
 	GENERATED_BODY()
 
 public:
-	// Constructor: Sets default values for this component's properties.
-	UKPhysics();
+	UKPhysicsMeshComponent();
 
 protected:
 	// Called when the game starts.
 	virtual void BeginPlay() override;
 	
-	// Number of integration substeps to use per frame for higher simulation accuracy.
+	// Number of integration substeps per frame for improved simulation accuracy.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	double NumHzPhysics = 1000;
 
+	// Mass in kilograms.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Physics")
 	double Mass = 10;
 	
-	// Static friction coefficient (mu_s) for holding an object at rest.
+	// Friction and restitution properties.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Friction")
 	double StaticFrictionCoefficient = 0.6;
-
-	// Dynamic friction coefficient (mu_k) for friction while sliding.
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Friction")
 	double DynamicFrictionCoefficient = 0.5;
 
-	// Coefficient of restitution representing bounciness.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Physics")
 	double RestitutionCoefficient = 0.5;
 
-	// Linear damping factor to reduce linear velocity over time.
+	// Damping factors.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Physics")
 	double LinearDampingFactor = 0.01;
 	
-	// Angular damping factor to reduce angular velocity over time.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Physics")
 	double AngularDampingFactor = 0;
 	
@@ -227,15 +215,10 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	
 private:
-	// Resolves collision responses when a collision is detected.
+	// Handles collision response when a collision is detected.
 	void ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent);
 	
-	// Current linear velocity of the physics body.
+	// Current velocities.
 	DVector LinearVelocity;
-	// Current angular velocity of the physics body.
 	DVector AngularVelocity;
-
-	// Cached reference to the actor's root primitive component.
-	UPROPERTY()
-	UPrimitiveComponent* RootPrimitive;
 };

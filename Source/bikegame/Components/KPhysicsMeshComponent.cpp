@@ -1,45 +1,33 @@
-﻿#include "KPhysics.h"
+﻿#include "KPhysicsMeshComponent.h"
 #include "GameFramework/Actor.h"
 #include "Components/PrimitiveComponent.h"
 
-/////////////////////////////////////////////////////
-// Constructor and Initialization
-/////////////////////////////////////////////////////
-
-UKPhysics::UKPhysics() 
-    : RootPrimitive(nullptr)
+UKPhysicsMeshComponent::UKPhysicsMeshComponent()
 {
     PrimaryComponentTick.bCanEverTick = true;
 }
 
-void UKPhysics::BeginPlay()
+void UKPhysicsMeshComponent::BeginPlay()
 {
     Super::BeginPlay();
     
-    RootPrimitive = Cast<UPrimitiveComponent>(GetOwner()->GetRootComponent());
-    if (!RootPrimitive)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("KPhysics: Actor's RootComponent is not a UPrimitiveComponent."));
-        return;
-    }
-
-    RootPrimitive->SetMassOverrideInKg(NAME_None, Mass, true);
-    RootPrimitive->RecreatePhysicsState();
-    RootPrimitive->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-    RootPrimitive->SetCollisionResponseToAllChannels(ECR_Block);
-    RootPrimitive->SetSimulatePhysics(false);
+    SetMassOverrideInKg(NAME_None, Mass, true);
+    RecreatePhysicsState();
+    SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    SetCollisionResponseToAllChannels(ECR_Block);
+    SetSimulatePhysics(false);
 }
 
-void UKPhysics::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+void UKPhysicsMeshComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-    if (!RootPrimitive || !GetWorld())
+    if (!GetWorld())
     {
         return;
     }
     
-    // Use double for substep timing
+    // Determine substeps for more accurate simulation.
     const double TargetSubstepDeltaTime = 1.0 / NumHzPhysics;
     int DynamicSubsteps = static_cast<int>(std::ceil(DeltaTime / TargetSubstepDeltaTime));
     DynamicSubsteps = FMath::Max(1, DynamicSubsteps);
@@ -47,16 +35,16 @@ void UKPhysics::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompon
 
     for (int SubstepIndex = 0; SubstepIndex < DynamicSubsteps; ++SubstepIndex)
     {
-        // 1) Damping (using double math)
+        // 1) Apply damping.
         LinearVelocity = LinearVelocity - LinearVelocity * (LinearDampingFactor * SubstepDeltaTime);
         AngularVelocity = AngularVelocity - AngularVelocity * (AngularDampingFactor * SubstepDeltaTime);
 
-        // 2) Gravity: convert Unreal’s gravity (float) to double
+        // 2) Apply gravity.
         double GravityZ = GetWorld()->GetGravityZ();
         LinearVelocity = LinearVelocity + DVector(0.0, 0.0, GravityZ) * SubstepDeltaTime;
 
-        // 3) Update Orientation using angular velocity (compute in double, then cast to FQuat)
-        FQuat CurrentOrientation = RootPrimitive->GetComponentQuat();
+        // 3) Update orientation using angular velocity.
+        FQuat CurrentOrientation = GetComponentQuat();
         {
             DVector DeltaAngularVelocity = AngularVelocity * SubstepDeltaTime;
             double RotationAngle = DeltaAngularVelocity.Size();
@@ -77,28 +65,28 @@ void UKPhysics::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompon
             }
         }
 
-        // 4) Linear motion: convert the double offset to FVector when applying
+        // 4) Linear movement.
         FHitResult LinearHitResult;
         FVector LinearOffset = (LinearVelocity * SubstepDeltaTime);
-        RootPrimitive->AddWorldOffset(LinearOffset, true, &LinearHitResult);
+        AddWorldOffset(LinearOffset, true, &LinearHitResult);
         if (LinearHitResult.bBlockingHit)
         {
-            ResolveCollision(LinearHitResult, RootPrimitive);
+            ResolveCollision(LinearHitResult, this);
         }
 
-        // 5) Angular motion: use computed quaternion delta
-        FQuat InitialOrientation = RootPrimitive->GetComponentQuat();
+        // 5) Angular movement.
+        FQuat InitialOrientation = GetComponentQuat();
         FQuat RotationDeltaQuat = CurrentOrientation * InitialOrientation.Inverse();
         FHitResult AngularHitResult;
-        RootPrimitive->AddWorldRotation(RotationDeltaQuat.Rotator(), true, &AngularHitResult);
+        AddWorldRotation(RotationDeltaQuat.Rotator(), true, &AngularHitResult);
         if (AngularHitResult.bBlockingHit)
         {
-            ResolveCollision(AngularHitResult, RootPrimitive);
+            ResolveCollision(AngularHitResult, this);
         }
     }
 }
 
-void UKPhysics::ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent)
+void UKPhysicsMeshComponent::ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent)
 {
     DVector CenterOfMass(PrimitiveComponent->GetCenterOfMass());
     FQuat CurrentOrientation = PrimitiveComponent->GetComponentQuat();
@@ -127,7 +115,7 @@ void UKPhysics::ResolveCollision(FHitResult& Hit, UPrimitiveComponent* Primitive
         RotationMatrixF.M[2][0], RotationMatrixF.M[2][1], RotationMatrixF.M[2][2]
     );
     
-    // Compute the world inertia tensor using: WorldInertia = R * LocalInertia * Transpose(R)
+    // Compute world inertia tensor.
     DMatrix3x3 WorldInertiaTensor = R * LocalInertia * DMatrix3x3::Transpose(R);
     
     double det = DMatrix3x3::Determinant(WorldInertiaTensor);
@@ -138,7 +126,7 @@ void UKPhysics::ResolveCollision(FHitResult& Hit, UPrimitiveComponent* Primitive
     }
     DMatrix3x3 WorldInertiaTensorInverse = DMatrix3x3::Inverse(WorldInertiaTensor);
     
-    // 1) Resolve Normal Collision Impulse
+    // 1) Normal collision impulse.
     if (RelativeNormalVelocity < -DSmall_Number)
     {
         DVector LeverArmCrossNormal = DVector::Cross(ContactOffset, HitNormal);
@@ -156,7 +144,7 @@ void UKPhysics::ResolveCollision(FHitResult& Hit, UPrimitiveComponent* Primitive
         DVector AngularVelocityDelta = WorldInertiaTensorInverse * AngularTorque;
         AngularVelocity = AngularVelocity + AngularVelocityDelta;
         
-        // 2) Resolve Friction Impulse
+        // 2) Friction impulse.
         ContactRelativeVelocity = LinearVelocity + DVector::Cross(AngularVelocity, ContactOffset);
         DVector PostCollisionNormalVelocity = HitNormal * DVector::Dot(ContactRelativeVelocity, HitNormal);
         DVector PostCollisionTangentialVelocity = ContactRelativeVelocity - PostCollisionNormalVelocity;
