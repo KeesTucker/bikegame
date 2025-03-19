@@ -55,8 +55,8 @@ void UReverseEulerConstraintComponent::TickComponent(float DeltaTime, ELevelTick
 	// - PhysicsComponentA receives +SpringForce.
 	// - PhysicsComponentB receives -SpringForce.
 	// (Assuming AddCustomForce adds the force to the internal velocity/impulse accumulator.)
-	PhysicsComponentA->AddCustomForce(SpringForce);
-	PhysicsComponentB->AddCustomForce(-SpringForce);
+	//PhysicsComponentA->AddCustomForce(SpringForce);
+	//PhysicsComponentB->AddCustomForce(-SpringForce);
 }
 
 FVector UReverseEulerConstraintComponent::ComputeSpringForce(const FVector& RelativeDisplacement, const FVector& RelativeVelocity, float EffectiveMass, float DeltaTime, float SpringK, float DampingC) const

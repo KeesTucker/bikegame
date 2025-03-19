@@ -2,18 +2,20 @@
 
 #include "bikegame/Types/DoubleMath.h"
 #include "bikegame/Types/DoubleMatrix3X3.h"
-#include "bikegame/Types/DoubleMatrix3X3.h"
 #include "GameFramework/Actor.h"
 #include "Components/PrimitiveComponent.h"
 
 UKPhysicsMeshComponent::UKPhysicsMeshComponent()
-{
-    PrimaryComponentTick.bCanEverTick = true;
-}
+{}
 
 void UKPhysicsMeshComponent::BeginPlay()
 {
     Super::BeginPlay();
+    
+    if (UKPhysicsTickSubsystem* TickSubsystem = GetWorld()->GetSubsystem<UKPhysicsTickSubsystem>())
+    {
+        TickSubsystem->RegisterComponent(this);
+    }
     
     SetMassOverrideInKg(NAME_None, Mass, true);
     RecreatePhysicsState();
@@ -22,71 +24,63 @@ void UKPhysicsMeshComponent::BeginPlay()
     SetSimulatePhysics(false);
 }
 
-void UKPhysicsMeshComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+void UKPhysicsMeshComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-    if (!GetWorld())
+    if (UKPhysicsTickSubsystem* TickSubsystem = GetWorld()->GetSubsystem<UKPhysicsTickSubsystem>())
     {
-        return;
+        TickSubsystem->UnregisterComponent(this);
     }
-    
-    // Determine substeps for more accurate simulation.
-    const double TargetSubstepDeltaTime = 1.0 / NumHzPhysics;
-    int DynamicSubsteps = static_cast<int>(std::ceil(DeltaTime / TargetSubstepDeltaTime));
-    DynamicSubsteps = FMath::Max(1, DynamicSubsteps);
-    const double SubstepDeltaTime = DeltaTime / static_cast<double>(DynamicSubsteps);
+    Super::EndPlay(EndPlayReason);
+}
 
-    for (int SubstepIndex = 0; SubstepIndex < DynamicSubsteps; ++SubstepIndex)
+void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
+{
+    // 1) Apply damping.
+    LinearVelocity = LinearVelocity - LinearVelocity * (LinearDampingFactor * DeltaTime);
+    AngularVelocity = AngularVelocity - AngularVelocity * (AngularDampingFactor * DeltaTime);
+
+    // 2) Apply gravity.
+    const double GravityZ = GetWorld()->GetGravityZ();
+    LinearVelocity = LinearVelocity + FDoubleVector(0.0, 0.0, GravityZ) * DeltaTime;
+
+    // 3) Update orientation using angular velocity.
+    FQuat CurrentOrientation = GetComponentQuat();
     {
-        // 1) Apply damping.
-        LinearVelocity = LinearVelocity - LinearVelocity * (LinearDampingFactor * SubstepDeltaTime);
-        AngularVelocity = AngularVelocity - AngularVelocity * (AngularDampingFactor * SubstepDeltaTime);
+        const FDoubleVector DeltaAngularVelocity = AngularVelocity * DeltaTime;
 
-        // 2) Apply gravity.
-        double GravityZ = GetWorld()->GetGravityZ();
-        LinearVelocity = LinearVelocity + FDoubleVector(0.0, 0.0, GravityZ) * SubstepDeltaTime;
-
-        // 3) Update orientation using angular velocity.
-        FQuat CurrentOrientation = GetComponentQuat();
+        if (const double RotationAngle = DeltaAngularVelocity.Size(); RotationAngle > DSmall_Number)
         {
-            FDoubleVector DeltaAngularVelocity = AngularVelocity * SubstepDeltaTime;
-            double RotationAngle = DeltaAngularVelocity.Size();
-
-            if (RotationAngle > DSmall_Number)
-            {
-                FDoubleVector RotationAxis = DeltaAngularVelocity / RotationAngle;
-                double HalfRotationAngle = 0.5 * RotationAngle;
-                double SineHalfAngle = std::sin(HalfRotationAngle);
-                FQuat RotationDeltaQuat(
-                    static_cast<float>(RotationAxis.X * SineHalfAngle),
-                    static_cast<float>(RotationAxis.Y * SineHalfAngle),
-                    static_cast<float>(RotationAxis.Z * SineHalfAngle),
-                    static_cast<float>(std::cos(HalfRotationAngle))
-                );
-                CurrentOrientation = RotationDeltaQuat * CurrentOrientation;
-                CurrentOrientation.Normalize();
-            }
+            const FDoubleVector RotationAxis = DeltaAngularVelocity / RotationAngle;
+            const double HalfRotationAngle = 0.5 * RotationAngle;
+            const double SineHalfAngle = std::sin(HalfRotationAngle);
+            const FQuat RotationDeltaQuat(
+                static_cast<float>(RotationAxis.X * SineHalfAngle),
+                static_cast<float>(RotationAxis.Y * SineHalfAngle),
+                static_cast<float>(RotationAxis.Z * SineHalfAngle),
+                static_cast<float>(std::cos(HalfRotationAngle))
+            );
+            CurrentOrientation = RotationDeltaQuat * CurrentOrientation;
+            CurrentOrientation.Normalize();
         }
+    }
 
-        // 4) Linear movement.
-        FHitResult LinearHitResult;
-        FDoubleVector LinearOffset = LinearVelocity * SubstepDeltaTime;
-        AddWorldOffset(FVector(LinearOffset), true, &LinearHitResult);
-        if (LinearHitResult.bBlockingHit)
-        {
-            ResolveCollision(LinearHitResult, this);
-        }
+    // 4) Linear movement.
+    FHitResult LinearHitResult;
+    FDoubleVector LinearOffset = LinearVelocity * DeltaTime;
+    AddWorldOffset(FVector(LinearOffset), true, &LinearHitResult);
+    if (LinearHitResult.bBlockingHit)
+    {
+        ResolveCollision(LinearHitResult, this);
+    }
 
-        // 5) Angular movement.
-        FQuat InitialOrientation = GetComponentQuat();
-        FQuat RotationDeltaQuat = CurrentOrientation * InitialOrientation.Inverse();
-        FHitResult AngularHitResult;
-        AddWorldRotation(RotationDeltaQuat.Rotator(), true, &AngularHitResult);
-        if (AngularHitResult.bBlockingHit)
-        {
-            ResolveCollision(AngularHitResult, this);
-        }
+    // 5) Angular movement.
+    FQuat InitialOrientation = GetComponentQuat();
+    FQuat RotationDeltaQuat = CurrentOrientation * InitialOrientation.Inverse();
+    FHitResult AngularHitResult;
+    AddWorldRotation(RotationDeltaQuat.Rotator(), true, &AngularHitResult);
+    if (AngularHitResult.bBlockingHit)
+    {
+        ResolveCollision(AngularHitResult, this);
     }
 }
 
@@ -121,13 +115,6 @@ void UKPhysicsMeshComponent::ResolveCollision(FHitResult& Hit, UPrimitiveCompone
     
     // Compute world inertia tensor.
     FDoubleMatrix3X3 WorldInertiaTensor = R * LocalInertia * FDoubleMatrix3X3::Transpose(R);
-    
-    double det = FDoubleMatrix3X3::Determinant(WorldInertiaTensor);
-    if (std::abs(det) < DSmall_Number)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Singular inertia tensor matrix encountered in collision resolution."));
-        return;
-    }
     FDoubleMatrix3X3 WorldInertiaTensorInverse = FDoubleMatrix3X3::Inverse(WorldInertiaTensor);
     
     // 1) Normal collision impulse.

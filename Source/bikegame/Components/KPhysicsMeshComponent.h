@@ -1,16 +1,21 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "bikegame/Subsystems/KPhysicsTickSubsystem.h"
 #include "bikegame/Types/DoubleVector.h"
 #include "Components/StaticMeshComponent.h"
 #include "KPhysicsMeshComponent.generated.h"
 
 /**
- * UKPhysics is a custom physics simulation component.
- * It now inherits from UStaticMeshComponent and applies physics directly to itself.
+ * @class UKPhysicsMeshComponent
+ * @brief A component that extends UStaticMeshComponent to simulate advanced physics interactions.
+ *
+ * This component integrates custom physics simulation logic and enables a high-fidelity physics
+ * system with customizable parameters such as mass, friction coefficients, damping factors, and induced slip.
+ * It also implements the IKPhysicsTickInterface for per-frame physics updates.
  */
 UCLASS(ClassGroup=(Physics), meta=(BlueprintSpawnableComponent))
-class BIKEGAME_API UKPhysicsMeshComponent : public UStaticMeshComponent
+class BIKEGAME_API UKPhysicsMeshComponent : public UStaticMeshComponent, public IKPhysicsTickInterface
 {
 	GENERATED_BODY()
 
@@ -20,11 +25,8 @@ public:
 protected:
 	// Called when the game starts.
 	virtual void BeginPlay() override;
+	virtual void EndPlay(EEndPlayReason::Type EndPlayReason) override;
 	
-	// Number of integration substeps per frame for improved simulation accuracy.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
-	double NumHzPhysics = 1000;
-
 	// Mass in kilograms.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
 	double Mass = 10;
@@ -55,15 +57,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
 	double InducedSlipBlend = 0.1;
 
-public:	
-	// Called every frame to update the physics simulation.
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+public:
+	virtual void PhysicsTick(const double DeltaTime) override;
 	
 private:
-	// Handles collision response when a collision is detected.
 	void ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent);
 	
-	// Current velocities.
 	FDoubleVector LinearVelocity;
 	FDoubleVector AngularVelocity;
 };
