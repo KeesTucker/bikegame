@@ -2,9 +2,13 @@
 
 #include "CoreMinimal.h"
 #include <cmath>
+#include "DoubleVector.generated.h"
 
+USTRUCT()
 struct FDoubleVector
 {
+    GENERATED_BODY()
+    
     double X, Y, Z;
 
     FDoubleVector()
@@ -43,7 +47,7 @@ struct FDoubleVector
     {
         return FDoubleVector(X * Scalar, Y * Scalar, Z * Scalar);
     }
-
+    
     FDoubleVector operator/(const double Scalar) const
     {
         return FDoubleVector(X / Scalar, Y / Scalar, Z / Scalar);
@@ -76,6 +80,11 @@ struct FDoubleVector
         return (SizeValue > 1e-8) ? (*this / SizeValue) : FDoubleVector(0.0, 0.0, 0.0);
     }
 
+    static FDoubleVector Zero()
+    {
+        return FDoubleVector(0.0, 0.0, 0.0);
+    }
+    
     static double Dot(const FDoubleVector& A, const FDoubleVector& B)
     {
         return A.X * B.X + A.Y * B.Y + A.Z * B.Z;

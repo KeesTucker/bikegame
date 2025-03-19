@@ -1,6 +1,8 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "bikegame/Subsystems/KPhysicsTickSubsystem.h"
+#include "bikegame/Types/DoubleVector.h"
 #include "Components/ActorComponent.h"
 #include "KReverseEulerConstraintComponent.generated.h"
 
@@ -12,47 +14,40 @@ class UKPhysicsMeshComponent;
  * opposite forces to each component using reverse Euler integration.
  */
 UCLASS(ClassGroup = (Physics), meta = (BlueprintSpawnableComponent))
-class BIKEGAME_API UReverseEulerConstraintComponent : public UActorComponent
+class BIKEGAME_API UReverseEulerConstraintComponent : public UActorComponent, public IKPhysicsTickInterface
 {
 	GENERATED_BODY()
 
 public:
 	UReverseEulerConstraintComponent();
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+	virtual void PhysicsTick(const double DeltaTime) override;
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(EEndPlayReason::Type EndPlayReason) override;
+	
 
-public:
-	// Called every frame.
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
-	/** First physics component in the constraint */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Constraint")
-	UKPhysicsMeshComponent* PhysicsComponentA;
-
-	/** Second physics component in the constraint */
+	FString PhysicsComponentNameA;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Constraint")
-	UKPhysicsMeshComponent* PhysicsComponentB;
-
-	/** Spring (stiffness) constant */
+	FString PhysicsComponentNameB;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Constraint")
-	float SpringConstant = 100.0f;
-
-	/** Damping constant */
+	double SpringConstant = 100.0;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Constraint")
-	float DampingConstant = 1.0f;
-
+	double DampingConstant = 1.0;
+	
 private:
-	/**
-	 * Computes the spring force using an implicit reverse Euler integration scheme for two bodies.
-	 *
-	 * @param RelativeDisplacement The displacement vector from A to B.
-	 * @param RelativeVelocity The relative velocity vector (vB - vA).
-	 * @param EffectiveMass The effective mass of the two-body system.
-	 * @param DeltaTime The time step.
-	 * @param SpringK The spring constant.
-	 * @param DampingC The damping constant.
-	 * @return The computed force to be applied to PhysicsComponentA (PhysicsComponentB receives the negative).
-	 */
-	FVector ComputeSpringForce(const FVector& RelativeDisplacement, const FVector& RelativeVelocity, float EffectiveMass, float DeltaTime, float SpringK, float DampingC) const;
+	static FDoubleVector ComputeSpringVelocity(double DeltaTime, const FDoubleVector& RelativeDisplacement,
+		const FDoubleVector& RelativeVelocity, double EffectiveMass, double SpringK, double DampingC);
+
+	UPROPERTY()
+	UKPhysicsMeshComponent* PhysicsComponentA;
+	UPROPERTY()
+	UKPhysicsMeshComponent* PhysicsComponentB;
+	UPROPERTY()
+	FDoubleVector InitialRelativePosition;
 };

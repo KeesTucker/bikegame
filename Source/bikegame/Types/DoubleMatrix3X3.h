@@ -1,9 +1,14 @@
 ﻿#pragma once
 
 #include <cmath>
+#include "DoubleVector.h"
+#include "DoubleMatrix3X3.generated.h"
 
+USTRUCT()
 struct FDoubleMatrix3X3
 {
+    GENERATED_BODY()
+    
     double M[3][3];
 
     FDoubleMatrix3X3()

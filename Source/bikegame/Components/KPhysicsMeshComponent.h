@@ -21,6 +21,11 @@ class BIKEGAME_API UKPhysicsMeshComponent : public UStaticMeshComponent, public 
 
 public:
 	UKPhysicsMeshComponent();
+	virtual void PhysicsTick(const double DeltaTime) override;
+	FDoubleVector GetKLinearVelocity() const;
+	FDoubleVector GetKAngularVelocity() const;
+	void AddKLinearVelocity(const FDoubleVector& InLinearVelocity);
+	void AddKAngularVelocity(const FDoubleVector& InAngularVelocity);
 
 protected:
 	// Called when the game starts.
@@ -36,10 +41,10 @@ protected:
 	double StaticFrictionCoefficient = 0.6;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
-	double DynamicFrictionCoefficient = 0.5;
+	double DynamicFrictionCoefficient = 0.4;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
-	double RestitutionCoefficient = 0.5;
+	double RestitutionCoefficient = 0.4;
 
 	// Damping factors.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
@@ -48,21 +53,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
 	double AngularDampingFactor = 0;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
-	double SlipBias = 0.001;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
-	double MinInducedSlip = 0.01;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
-	double InducedSlipBlend = 0.1;
-
-public:
-	virtual void PhysicsTick(const double DeltaTime) override;
-	
 private:
 	void ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent);
 	
 	FDoubleVector LinearVelocity;
 	FDoubleVector AngularVelocity;
+
+	FDoubleVector LinearVelocityBucket;
+	FDoubleVector AngularVelocityBucket;
 };

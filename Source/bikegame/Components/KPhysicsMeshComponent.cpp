@@ -43,6 +43,12 @@ void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
     const double GravityZ = GetWorld()->GetGravityZ();
     LinearVelocity = LinearVelocity + FDoubleVector(0.0, 0.0, GravityZ) * DeltaTime;
 
+    // 2.5) Apply external velocities
+    LinearVelocity += LinearVelocityBucket;
+    LinearVelocityBucket = FDoubleVector::Zero();
+    AngularVelocity += AngularVelocityBucket;
+    AngularVelocityBucket = FDoubleVector::Zero();
+    
     // 3) Update orientation using angular velocity.
     FQuat CurrentOrientation = GetComponentQuat();
     {
@@ -66,7 +72,7 @@ void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
 
     // 4) Linear movement.
     FHitResult LinearHitResult;
-    FDoubleVector LinearOffset = LinearVelocity * DeltaTime;
+    const FDoubleVector LinearOffset = LinearVelocity * DeltaTime;
     AddWorldOffset(FVector(LinearOffset), true, &LinearHitResult);
     if (LinearHitResult.bBlockingHit)
     {
@@ -74,14 +80,34 @@ void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
     }
 
     // 5) Angular movement.
-    FQuat InitialOrientation = GetComponentQuat();
-    FQuat RotationDeltaQuat = CurrentOrientation * InitialOrientation.Inverse();
+    const FQuat InitialOrientation = GetComponentQuat();
+    const FQuat RotationDeltaQuat = CurrentOrientation * InitialOrientation.Inverse();
     FHitResult AngularHitResult;
     AddWorldRotation(RotationDeltaQuat.Rotator(), true, &AngularHitResult);
     if (AngularHitResult.bBlockingHit)
     {
         ResolveCollision(AngularHitResult, this);
     }
+}
+
+FDoubleVector UKPhysicsMeshComponent::GetKLinearVelocity() const
+{
+    return LinearVelocity;
+}
+
+FDoubleVector UKPhysicsMeshComponent::GetKAngularVelocity() const
+{
+    return AngularVelocity;
+}
+
+void UKPhysicsMeshComponent::AddKLinearVelocity(const FDoubleVector& InLinearVelocity)
+{
+    LinearVelocityBucket += InLinearVelocity;
+}
+
+void UKPhysicsMeshComponent::AddKAngularVelocity(const FDoubleVector& InAngularVelocity)
+{
+    AngularVelocityBucket += InAngularVelocity;
 }
 
 void UKPhysicsMeshComponent::ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent)
@@ -139,20 +165,8 @@ void UKPhysicsMeshComponent::ResolveCollision(FHitResult& Hit, UPrimitiveCompone
         ContactRelativeVelocity = LinearVelocity + FDoubleVector::Cross(AngularVelocity, ContactOffset);
         FDoubleVector PostCollisionNormalVelocity = HitNormal * FDoubleVector::Dot(ContactRelativeVelocity, HitNormal);
         FDoubleVector PostCollisionTangentialVelocity = ContactRelativeVelocity - PostCollisionNormalVelocity;
-        double TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
 
-        if (TangentialVelocityMagnitude < DSmall_Number)
-        {
-            FDoubleVector InducedSlipVelocity = FDoubleVector::Cross(AngularVelocity, ContactOffset);
-            if (InducedSlipVelocity.Size() < MinInducedSlip)
-            {
-                InducedSlipVelocity = InducedSlipVelocity.GetSafeNormal() * MinInducedSlip;
-            }
-            PostCollisionTangentialVelocity = FDoubleVector::Lerp(PostCollisionTangentialVelocity, InducedSlipVelocity, InducedSlipBlend);
-            TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size();
-        }
-
-        if (TangentialVelocityMagnitude > DSmall_Number)
+        if (double TangentialVelocityMagnitude = PostCollisionTangentialVelocity.Size(); TangentialVelocityMagnitude > DSmall_Number)
         {
             FDoubleVector FrictionDirection = PostCollisionTangentialVelocity / TangentialVelocityMagnitude;
             FDoubleVector LeverArmCrossFriction = FDoubleVector::Cross(ContactOffset, FrictionDirection);
@@ -166,12 +180,25 @@ void UKPhysicsMeshComponent::ResolveCollision(FHitResult& Hit, UPrimitiveCompone
             double MaxStaticImpulse = StaticFrictionCoefficient * std::abs(NormalImpulseMagnitude);
             double MaxDynamicImpulse = DynamicFrictionCoefficient * std::abs(NormalImpulseMagnitude);
 
-            double FrictionBlendFactor = FDoubleMath::Clamp(TangentialVelocityMagnitude / SlipBias, 0.0, 1.0);
-            double BlendedFrictionImpulse = FDoubleMath::Lerp(MaxStaticImpulse, MaxDynamicImpulse, FrictionBlendFactor);
+            double FinalFrictionImpulseMagnitude;
 
-            double FinalFrictionImpulseMagnitude = FDoubleMath::Clamp(CandidateFrictionImpulse, -BlendedFrictionImpulse, BlendedFrictionImpulse);
+            // Determine whether to use static or dynamic friction
+            if (std::abs(CandidateFrictionImpulse) <= MaxStaticImpulse)
+            {
+                FinalFrictionImpulseMagnitude = CandidateFrictionImpulse;
+            }
+            else
+            {
+                // Apply dynamic friction opposite to the tangential direction
+                FinalFrictionImpulseMagnitude = -MaxDynamicImpulse;
+            }
+
+            // Clamp to ensure no invalid values (optional safety measure)
+            FinalFrictionImpulseMagnitude = FDoubleMath::Clamp(FinalFrictionImpulseMagnitude, -MaxDynamicImpulse, MaxDynamicImpulse);
 
             FDoubleVector FrictionImpulse = FrictionDirection * FinalFrictionImpulseMagnitude;
+
+            // Apply the friction impulse to linear and angular velocities
             LinearVelocity = LinearVelocity + FrictionImpulse / Mass;
             FDoubleVector FrictionAngularTorque = FDoubleVector::Cross(ContactOffset, FrictionImpulse);
             FDoubleVector FrictionAngularDelta = WorldInertiaTensorInverse * FrictionAngularTorque;
