@@ -5,17 +5,44 @@
 #include "GameFramework/Actor.h"
 #include "Math/UnrealMathUtility.h"
 
-UReverseEulerConstraintComponent::UReverseEulerConstraintComponent(): PhysicsComponentA(nullptr),
+UKReverseEulerConstraintComponent::UKReverseEulerConstraintComponent(): PhysicsComponentA(nullptr),
                                                                       PhysicsComponentB(nullptr)
 {
 	PrimaryComponentTick.bCanEverTick = true;
 }
 
 #if WITH_EDITOR
-void UReverseEulerConstraintComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+void UKReverseEulerConstraintComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 	
+	Init();
+}
+#endif
+
+void UKReverseEulerConstraintComponent::BeginPlay()
+{
+	Super::BeginPlay();
+
+	Init();
+	
+	if (UKPhysicsTickSubsystem* TickSubsystem = GetWorld()->GetSubsystem<UKPhysicsTickSubsystem>())
+	{
+		TickSubsystem->RegisterComponent(this);
+	}
+}
+
+void UKReverseEulerConstraintComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UKPhysicsTickSubsystem* TickSubsystem = GetWorld()->GetSubsystem<UKPhysicsTickSubsystem>())
+	{
+		TickSubsystem->UnregisterComponent(this);
+	}
+	Super::EndPlay(EndPlayReason);
+}
+
+void UKReverseEulerConstraintComponent::Init()
+{
 	if (const AActor* Owner = GetOwner())
 	{
 		TArray<UActorComponent*> Components;
@@ -43,28 +70,8 @@ void UReverseEulerConstraintComponent::PostEditChangeProperty(FPropertyChangedEv
 	const FDoubleVector PosB = FDoubleVector(PhysicsComponentB->GetComponentLocation());
 	InitialRelativePosition = PosB - PosA;
 }
-#endif
 
-void UReverseEulerConstraintComponent::BeginPlay()
-{
-	Super::BeginPlay();
-
-	if (UKPhysicsTickSubsystem* TickSubsystem = GetWorld()->GetSubsystem<UKPhysicsTickSubsystem>())
-	{
-		TickSubsystem->RegisterComponent(this);
-	}
-}
-
-void UReverseEulerConstraintComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	if (UKPhysicsTickSubsystem* TickSubsystem = GetWorld()->GetSubsystem<UKPhysicsTickSubsystem>())
-	{
-		TickSubsystem->UnregisterComponent(this);
-	}
-	Super::EndPlay(EndPlayReason);
-}
-
-void UReverseEulerConstraintComponent::PhysicsTick(const double DeltaTime)
+void UKReverseEulerConstraintComponent::PhysicsTick(const double DeltaTime)
 {
 	if (!PhysicsComponentA || !PhysicsComponentB)
 	{
@@ -82,25 +89,25 @@ void UReverseEulerConstraintComponent::PhysicsTick(const double DeltaTime)
 
 	// Retrieve velocities (using your existing methods).
 	const FDoubleVector VelA = PhysicsComponentA->GetKLinearVelocity();
-	const FDoubleVector VelB = PhysicsComponentB->GetKAngularVelocity();
+	const FDoubleVector VelB = PhysicsComponentB->GetKLinearVelocity();
 	const FDoubleVector RelativeVelocity = VelB - VelA;
 
 	// Retrieve masses.
-	const double MassA = PhysicsComponentA->GetMass();
-	const double MassB = PhysicsComponentB->GetMass();
+	const double MassA = PhysicsComponentA->GetKMass();
+	const double MassB = PhysicsComponentB->GetKMass();
 
 	// Calculate the effective mass.
 	const double EffectiveMass = MassA * MassB / (MassA + MassB);
 
 	// Compute the spring force correction based on the displacement error.
 	const FDoubleVector VelocityCorrection = ComputeSpringVelocity(DeltaTime, DisplacementError, RelativeVelocity, EffectiveMass, SpringConstant, DampingConstant);
-    
+	
 	// Apply equal and opposite corrections.
-	PhysicsComponentA->AddKLinearVelocity(VelocityCorrection);
-	PhysicsComponentB->AddKLinearVelocity(VelocityCorrection * -1.0);
+	PhysicsComponentA->AddKLinearVelocity(VelocityCorrection * -1.0);
+	PhysicsComponentB->AddKLinearVelocity(VelocityCorrection * 1.0);
 }
 
-FDoubleVector UReverseEulerConstraintComponent::ComputeSpringVelocity(
+FDoubleVector UKReverseEulerConstraintComponent::ComputeSpringVelocity(
 	const double DeltaTime,
 	const FDoubleVector& RelativeDisplacement,
 	const FDoubleVector& RelativeVelocity,

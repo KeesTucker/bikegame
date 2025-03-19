@@ -14,12 +14,12 @@ class UKPhysicsMeshComponent;
  * opposite forces to each component using reverse Euler integration.
  */
 UCLASS(ClassGroup = (Physics), meta = (BlueprintSpawnableComponent))
-class BIKEGAME_API UReverseEulerConstraintComponent : public UActorComponent, public IKPhysicsTickInterface
+class BIKEGAME_API UKReverseEulerConstraintComponent : public UActorComponent, public IKPhysicsTickInterface
 {
 	GENERATED_BODY()
 
 public:
-	UReverseEulerConstraintComponent();
+	UKReverseEulerConstraintComponent();
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
@@ -29,7 +29,6 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(EEndPlayReason::Type EndPlayReason) override;
 	
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Constraint")
 	FString PhysicsComponentNameA;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Constraint")
@@ -41,13 +40,14 @@ protected:
 	double DampingConstant = 1.0;
 	
 private:
+	void Init();
 	static FDoubleVector ComputeSpringVelocity(double DeltaTime, const FDoubleVector& RelativeDisplacement,
 		const FDoubleVector& RelativeVelocity, double EffectiveMass, double SpringK, double DampingC);
 
-	UPROPERTY()
+	UPROPERTY(EditAnywhere)
 	UKPhysicsMeshComponent* PhysicsComponentA;
-	UPROPERTY()
+	UPROPERTY(EditAnywhere)
 	UKPhysicsMeshComponent* PhysicsComponentB;
-	UPROPERTY()
+	UPROPERTY(EditAnywhere)
 	FDoubleVector InitialRelativePosition;
 };

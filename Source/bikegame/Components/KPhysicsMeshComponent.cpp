@@ -35,6 +35,11 @@ void UKPhysicsMeshComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
 {
+    if (Freeze)
+    {
+        return;
+    }
+    
     // 1) Apply damping.
     LinearVelocity = LinearVelocity - LinearVelocity * (LinearDampingFactor * DeltaTime);
     AngularVelocity = AngularVelocity - AngularVelocity * (AngularDampingFactor * DeltaTime);
@@ -88,6 +93,11 @@ void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
     {
         ResolveCollision(AngularHitResult, this);
     }
+}
+
+double UKPhysicsMeshComponent::GetKMass() const
+{
+    return Mass;
 }
 
 FDoubleVector UKPhysicsMeshComponent::GetKLinearVelocity() const

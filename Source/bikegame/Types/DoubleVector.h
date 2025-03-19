@@ -8,8 +8,13 @@ USTRUCT()
 struct FDoubleVector
 {
     GENERATED_BODY()
-    
-    double X, Y, Z;
+
+    UPROPERTY(EditAnywhere)
+    double X;
+    UPROPERTY(EditAnywhere)
+    double Y;
+    UPROPERTY(EditAnywhere)
+    double Z;
 
     FDoubleVector()
         : X(0.0), Y(0.0), Z(0.0)

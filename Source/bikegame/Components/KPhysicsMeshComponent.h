@@ -22,6 +22,7 @@ class BIKEGAME_API UKPhysicsMeshComponent : public UStaticMeshComponent, public 
 public:
 	UKPhysicsMeshComponent();
 	virtual void PhysicsTick(const double DeltaTime) override;
+	double GetKMass() const;
 	FDoubleVector GetKLinearVelocity() const;
 	FDoubleVector GetKAngularVelocity() const;
 	void AddKLinearVelocity(const FDoubleVector& InLinearVelocity);
@@ -52,6 +53,9 @@ protected:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
 	double AngularDampingFactor = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
+	bool Freeze;
 	
 private:
 	void ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent);
