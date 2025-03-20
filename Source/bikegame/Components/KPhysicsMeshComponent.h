@@ -1,8 +1,9 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "bikegame/Math/DoubleQuat.h"
 #include "bikegame/Subsystems/KPhysicsTickSubsystem.h"
-#include "bikegame/Types/DoubleVector.h"
+#include "bikegame/Math/DoubleVector.h"
 #include "Components/StaticMeshComponent.h"
 #include "KPhysicsMeshComponent.generated.h"
 
@@ -23,6 +24,8 @@ public:
 	UKPhysicsMeshComponent();
 	virtual void PhysicsTick(const double DeltaTime) override;
 	double GetKMass() const;
+	FDoubleVector GetKLocation() const;
+	FDoubleQuat GetKOrientation() const;
 	FDoubleVector GetKLinearVelocity() const;
 	FDoubleVector GetKAngularVelocity() const;
 	void AddKLinearVelocity(const FDoubleVector& InLinearVelocity);
@@ -59,6 +62,9 @@ protected:
 	
 private:
 	void ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent);
+
+	FDoubleVector Location;
+	FDoubleQuat Orientation;
 	
 	FDoubleVector LinearVelocity;
 	FDoubleVector AngularVelocity;

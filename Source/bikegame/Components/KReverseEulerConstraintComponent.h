@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "bikegame/Subsystems/KPhysicsTickSubsystem.h"
-#include "bikegame/Types/DoubleVector.h"
+#include "bikegame/Math/DoubleVector.h"
 #include "Components/ActorComponent.h"
 #include "KReverseEulerConstraintComponent.generated.h"
 

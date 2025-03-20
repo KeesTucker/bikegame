@@ -1,7 +1,7 @@
 ﻿#include "KReverseEulerConstraintComponent.h"
 
 #include "KPhysicsMeshComponent.h"
-#include "bikegame/Types/DoubleMath.h"
+#include "bikegame/Math/DoubleMath.h"
 #include "GameFramework/Actor.h"
 #include "Math/UnrealMathUtility.h"
 
@@ -66,8 +66,8 @@ void UKReverseEulerConstraintComponent::Init()
 	{
 		return;
 	}
-	const FDoubleVector PosA = FDoubleVector(PhysicsComponentA->GetComponentLocation());
-	const FDoubleVector PosB = FDoubleVector(PhysicsComponentB->GetComponentLocation());
+	const FDoubleVector PosA = PhysicsComponentA->GetKLocation();
+	const FDoubleVector PosB = PhysicsComponentB->GetKLocation();
 	InitialRelativePosition = PosB - PosA;
 }
 
@@ -79,8 +79,8 @@ void UKReverseEulerConstraintComponent::PhysicsTick(const double DeltaTime)
 	}
 
 	// Get the current world positions.
-	const FDoubleVector PosA = FDoubleVector(PhysicsComponentA->GetComponentLocation());
-	const FDoubleVector PosB = FDoubleVector(PhysicsComponentB->GetComponentLocation());
+	const FDoubleVector PosA = PhysicsComponentA->GetKLocation();
+	const FDoubleVector PosB = PhysicsComponentB->GetKLocation();
 
 	// Compute the current displacement.
 	const FDoubleVector CurrentDisplacement = PosB - PosA;
@@ -103,8 +103,8 @@ void UKReverseEulerConstraintComponent::PhysicsTick(const double DeltaTime)
 	const FDoubleVector VelocityCorrection = ComputeSpringVelocity(DeltaTime, DisplacementError, RelativeVelocity, EffectiveMass, SpringConstant, DampingConstant);
 	
 	// Apply equal and opposite corrections.
-	PhysicsComponentA->AddKLinearVelocity(VelocityCorrection * -1.0);
-	PhysicsComponentB->AddKLinearVelocity(VelocityCorrection * 1.0);
+	PhysicsComponentA->AddKLinearVelocity(-1 * VelocityCorrection);
+	PhysicsComponentB->AddKLinearVelocity(VelocityCorrection);
 }
 
 FDoubleVector UKReverseEulerConstraintComponent::ComputeSpringVelocity(
@@ -126,7 +126,7 @@ FDoubleVector UKReverseEulerConstraintComponent::ComputeSpringVelocity(
 
 	// Calculate the determinant.
 	const double Det = A11 * A22 - A12 * A21;
-	if (FMath::Abs(Det) < DSmall_Number)
+	if (FMath::Abs(Det) < DSmallNumber)
 	{
 		// Avoid division by zero; no force is applied.
 		return FDoubleVector::Zero();

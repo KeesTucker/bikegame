@@ -53,6 +53,14 @@ struct FDoubleVector
         return FDoubleVector(X * Scalar, Y * Scalar, Z * Scalar);
     }
     
+    FDoubleVector& operator*=(const double Scalar)
+    {
+        X *= Scalar;
+        Y *= Scalar;
+        Z *= Scalar;
+        return *this;
+    }
+    
     FDoubleVector operator/(const double Scalar) const
     {
         return FDoubleVector(X / Scalar, Y / Scalar, Z / Scalar);
@@ -109,3 +117,8 @@ struct FDoubleVector
         return A + (B - A) * InAlpha;
     }
 };
+
+inline FDoubleVector operator*(const double Scalar, const FDoubleVector& Vec)
+{
+    return FDoubleVector(Vec.X * Scalar, Vec.Y * Scalar, Vec.Z * Scalar);
+}

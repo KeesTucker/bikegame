@@ -2,7 +2,7 @@
 
 #include "DoubleMath.generated.h"
 
-constexpr double DSmall_Number = 1e-8;
+constexpr double DSmallNumber = 1e-8;
 
 USTRUCT()
 struct FDoubleMath
