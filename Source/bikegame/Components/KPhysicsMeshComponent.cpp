@@ -45,6 +45,12 @@ void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
 {
     if (!Freeze)
     {
+        // Apply external velocities
+        LinearVelocity += LinearVelocityBucket;
+        LinearVelocityBucket = FDoubleVector::Zero();
+        AngularVelocity += AngularVelocityBucket;
+        AngularVelocityBucket = FDoubleVector::Zero();
+        
         // Apply damping.
         LinearVelocity *= FMath::Exp(-LinearDampingFactor * DeltaTime);
         AngularVelocity *= FMath::Exp(-AngularDampingFactor * DeltaTime);
@@ -52,12 +58,6 @@ void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
         // Apply gravity.
         const double GravityZ = GetWorld()->GetGravityZ();
         LinearVelocity += FDoubleVector(0.0, 0.0, GravityZ) * DeltaTime;
-
-        // Apply external velocities
-        LinearVelocity += LinearVelocityBucket;
-        LinearVelocityBucket = FDoubleVector::Zero();
-        AngularVelocity += AngularVelocityBucket;
-        AngularVelocityBucket = FDoubleVector::Zero();
 
         // Update location using linear velocity
         Location += LinearVelocity * DeltaTime;
@@ -167,11 +167,11 @@ void UKPhysicsMeshComponent::ResolveCollision(FHitResult& Hit, UPrimitiveCompone
         
         double NormalImpulseMagnitude = -(1.0 + RestitutionCoefficient) * RelativeNormalVelocity / EffectiveNormalMass;
         FDoubleVector CollisionImpulse = HitNormal * NormalImpulseMagnitude;
+        LinearVelocity += CollisionImpulse / Mass;
         
-        LinearVelocity = LinearVelocity + CollisionImpulse / Mass;
         FDoubleVector AngularTorque = FDoubleVector::Cross(ContactOffset, CollisionImpulse);
         FDoubleVector AngularVelocityDelta = WorldInertiaTensorInverse * AngularTorque;
-        AngularVelocity = AngularVelocity + AngularVelocityDelta;
+        AngularVelocity += AngularVelocityDelta;
         
         // 2) Friction impulse.
         ContactRelativeVelocity = LinearVelocity + FDoubleVector::Cross(AngularVelocity, ContactOffset);
@@ -206,9 +206,10 @@ void UKPhysicsMeshComponent::ResolveCollision(FHitResult& Hit, UPrimitiveCompone
         FDoubleVector FrictionImpulse = FrictionDirection * FinalFrictionImpulseMagnitude;
 
         // Apply the friction impulse to linear and angular velocities
-        LinearVelocity = LinearVelocity + FrictionImpulse / Mass;
+        LinearVelocity += FrictionImpulse / Mass;
+        
         FDoubleVector FrictionAngularTorque = FDoubleVector::Cross(ContactOffset, FrictionImpulse);
         FDoubleVector FrictionAngularDelta = WorldInertiaTensorInverse * FrictionAngularTorque;
-        AngularVelocity = AngularVelocity + FrictionAngularDelta;
+        AngularVelocity += FrictionAngularDelta;
     }
 }

@@ -104,6 +104,27 @@ struct FDoubleQuat
             2.0 * (Xz - Wy),       2.0 * (Yz + Wx),       1.0 - 2.0 * (Xx + Yy)
         );
     }
+
+    void ToAxisAndAngle(FDoubleVector& OutAxis, double& OutAngle) const
+    {
+        // First, ensure the quaternion is normalized.
+        const FDoubleQuat Norm = GetNormalized();
+
+        // The rotation angle (in radians) is 2 * acos(w)
+        OutAngle = 2.0 * std::acos(Norm.W);
+        
+        // Compute the scale factor for the axis.
+        // If scale factor is close to zero, the axis direction is not well-defined.
+        // In that case, we arbitrarily choose (1,0,0) as the axis.
+        if (const double S = std::sqrt(1.0 - Norm.W * Norm.W); S < 1e-8)
+        {
+            OutAxis = FDoubleVector(1.0, 0.0, 0.0); 
+        }
+        else
+        {
+            OutAxis = FDoubleVector(Norm.X / S, Norm.Y / S, Norm.Z / S);
+        }
+    }
     
     explicit operator FQuat() const
     {

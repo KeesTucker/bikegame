@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "bikegame/Math/DoubleQuat.h"
 #include "bikegame/Subsystems/KPhysicsTickSubsystem.h"
 #include "bikegame/Math/DoubleVector.h"
 #include "Components/ActorComponent.h"
@@ -35,9 +36,14 @@ protected:
 	FString PhysicsComponentNameB;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Constraint")
-	double SpringConstant = 100.0;
+	double LinearSpringConstant = 100.0;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Constraint")
-	double DampingConstant = 1.0;
+	double LinearDampingConstant = 1.0;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Constraint")
+	double AngularSpringConstant = 100.0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Constraint")
+	double AngularDampingConstant = 1.0;
 	
 private:
 	void Init();
@@ -50,4 +56,10 @@ private:
 	UKPhysicsMeshComponent* PhysicsComponentB;
 	UPROPERTY(EditAnywhere)
 	FDoubleVector InitialRelativePosition;
+	UPROPERTY(EditAnywhere)
+	FDoubleQuat InitialRelativeOrientation;
+	UPROPERTY(EditAnywhere)
+	FDoubleVector InitialDirection;
+	UPROPERTY(EditAnywhere)
+	double InitialDistance;
 };

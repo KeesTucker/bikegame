@@ -5,8 +5,8 @@
 #include "GameFramework/Actor.h"
 #include "Math/UnrealMathUtility.h"
 
-UKReverseEulerConstraintComponent::UKReverseEulerConstraintComponent(): PhysicsComponentA(nullptr),
-                                                                      PhysicsComponentB(nullptr)
+UKReverseEulerConstraintComponent::UKReverseEulerConstraintComponent():
+	PhysicsComponentA(nullptr), PhysicsComponentB(nullptr), InitialDistance(0)
 {
 	PrimaryComponentTick.bCanEverTick = true;
 }
@@ -66,9 +66,13 @@ void UKReverseEulerConstraintComponent::Init()
 	{
 		return;
 	}
-	const FDoubleVector PosA = PhysicsComponentA->GetKLocation();
-	const FDoubleVector PosB = PhysicsComponentB->GetKLocation();
+
+	// Use component location instead of GetKLocation since KLocation is set in BeginPlay and results in a race condition
+	const FDoubleVector PosA = FDoubleVector(PhysicsComponentA->GetComponentLocation());
+	const FDoubleVector PosB = FDoubleVector(PhysicsComponentB->GetComponentLocation());
 	InitialRelativePosition = PosB - PosA;
+	InitialDistance = InitialRelativePosition.Size();
+	InitialDirection = InitialDistance > DSmallNumber ? InitialRelativePosition / InitialDistance : FDoubleVector::Zero();
 }
 
 void UKReverseEulerConstraintComponent::PhysicsTick(const double DeltaTime)
@@ -77,17 +81,26 @@ void UKReverseEulerConstraintComponent::PhysicsTick(const double DeltaTime)
 	{
 		return;
 	}
-
-	// Get the current world positions.
+	
 	const FDoubleVector PosA = PhysicsComponentA->GetKLocation();
 	const FDoubleVector PosB = PhysicsComponentB->GetKLocation();
 
-	// Compute the current displacement.
+	// Linear Spring
+	
+	// Get the current displacement vector and its magnitude.
 	const FDoubleVector CurrentDisplacement = PosB - PosA;
-	// Calculate the error relative to the initial separation.
-	const FDoubleVector DisplacementError = CurrentDisplacement - InitialRelativePosition;
+	const double CurrentDistance = CurrentDisplacement.Size();
 
-	// Retrieve velocities (using your existing methods).
+	// Calculate the error in distance.
+	const double DistanceError = CurrentDistance - InitialDistance;
+
+	// Get the radial direction (if the distance is non-zero).
+	const FDoubleVector Direction = (CurrentDistance > DSmallNumber) ? CurrentDisplacement / CurrentDistance : FDoubleVector::Zero();
+
+	// Create an error vector that only corrects the distance.
+	const FDoubleVector ErrorVector = Direction * DistanceError;
+	
+	// Retrieve velocities.
 	const FDoubleVector VelA = PhysicsComponentA->GetKLinearVelocity();
 	const FDoubleVector VelB = PhysicsComponentB->GetKLinearVelocity();
 	const FDoubleVector RelativeVelocity = VelB - VelA;
@@ -99,9 +112,16 @@ void UKReverseEulerConstraintComponent::PhysicsTick(const double DeltaTime)
 	// Calculate the effective mass.
 	const double EffectiveMass = MassA * MassB / (MassA + MassB);
 
-	// Compute the spring force correction based on the displacement error.
-	const FDoubleVector VelocityCorrection = ComputeSpringVelocity(DeltaTime, DisplacementError, RelativeVelocity, EffectiveMass, SpringConstant, DampingConstant);
-	
+	// Compute the spring force correction based on the distance error.
+	const FDoubleVector VelocityCorrection = ComputeSpringVelocity(
+		DeltaTime,
+		ErrorVector,
+		RelativeVelocity,
+		EffectiveMass,
+		LinearSpringConstant,
+		LinearDampingConstant
+	);
+    
 	// Apply equal and opposite corrections.
 	PhysicsComponentA->AddKLinearVelocity(-1 * VelocityCorrection);
 	PhysicsComponentB->AddKLinearVelocity(VelocityCorrection);
