@@ -53,12 +53,7 @@ private:
 	FDoubleVector GetAngularSpringVelocity(double DeltaTime, const FDoubleVector& InitialDirection,
 	                                       const FDoubleVector& Direction,
 	                                       const FDoubleQuat& InitialOrientation, const FDoubleQuat& Orientation, const FDoubleVector& RelativeAngularVelocity) const;
-	static FDoubleVector ComputeSpringVelocity(double DeltaTime, const FDoubleVector& ErrorDisplacement,
-		const FDoubleVector& RelativeVelocity, double EffectiveMass, double SpringK, double DampingC);
-	static FDoubleVector ComputeAngularSpringVelocity(double DeltaTime, const FDoubleVector& ErrorAngularDisplacement,
-	                                           const FDoubleVector& RelativeAngularVelocity, double EffectiveInertia,
-	                                           double AngularSpringK, double AngularDampingC);
-
+	
 	UPROPERTY()
 	UKPhysicsMeshComponent* PhysicsComponentA;
 	UPROPERTY()

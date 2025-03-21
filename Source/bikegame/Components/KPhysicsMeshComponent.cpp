@@ -3,10 +3,12 @@
 #include "bikegame/Math/DoubleMath.h"
 #include "bikegame/Math/DoubleMatrix3X3.h"
 #include "bikegame/Math/DoubleQuat.h"
+#include "bikegame/Math/ReverseEulerSpring.h"
 #include "GameFramework/Actor.h"
 #include "Components/PrimitiveComponent.h"
 
-UKPhysicsMeshComponent::UKPhysicsMeshComponent(): Freeze(false)
+UKPhysicsMeshComponent::UKPhysicsMeshComponent(): FreezeXOrientation(false), FreezeYOrientation(false),
+                                                  FreezeZOrientation(false)
 {
 }
 
@@ -42,45 +44,42 @@ void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
 {
     WorldInertiaTensor = FDoubleMatrix3X3::WorldInertiaTensor(GetInertiaTensor(), Orientation.ToRotationMatrix());
 
-    FDoubleVector InitLocation = Location;
-    FDoubleQuat InitOrientation = Orientation;
+    const FDoubleVector InitLocation = Location;
+    const FDoubleQuat InitOrientation = Orientation;
     
-    if (!Freeze)
+    // Apply external velocities
+    LinearVelocity += LinearVelocityBucket;
+    LinearVelocityBucket = FDoubleVector::Zero();
+    AngularVelocity += AngularVelocityBucket;
+    AngularVelocityBucket = FDoubleVector::Zero();
+    
+    // Apply damping.
+    LinearVelocity *= FMath::Exp(-LinearDampingFactor * DeltaTime);
+    AngularVelocity *= FMath::Exp(-AngularDampingFactor * DeltaTime);
+
+    // Apply gravity.
+    const double GravityZ = GetWorld()->GetGravityZ();
+    LinearVelocity += FDoubleVector(0.0, 0.0, GravityZ) * DeltaTime;
+
+    // Update location using linear velocity
+    Location += LinearVelocity * DeltaTime;
+    
+    // Update orientation using angular velocity.
+    const FDoubleVector DeltaAngularVelocity = AngularVelocity * DeltaTime;
+
+    if (const double RotationAngle = DeltaAngularVelocity.Size(); RotationAngle > DSmallNumber)
     {
-        // Apply external velocities
-        LinearVelocity += LinearVelocityBucket;
-        LinearVelocityBucket = FDoubleVector::Zero();
-        AngularVelocity += AngularVelocityBucket;
-        AngularVelocityBucket = FDoubleVector::Zero();
-        
-        // Apply damping.
-        LinearVelocity *= FMath::Exp(-LinearDampingFactor * DeltaTime);
-        AngularVelocity *= FMath::Exp(-AngularDampingFactor * DeltaTime);
-
-        // Apply gravity.
-        const double GravityZ = GetWorld()->GetGravityZ();
-        LinearVelocity += FDoubleVector(0.0, 0.0, GravityZ) * DeltaTime;
-
-        // Update location using linear velocity
-        Location += LinearVelocity * DeltaTime;
-        
-        // Update orientation using angular velocity.
-        const FDoubleVector DeltaAngularVelocity = AngularVelocity * DeltaTime;
-
-        if (const double RotationAngle = DeltaAngularVelocity.Size(); RotationAngle > DSmallNumber)
-        {
-            const FDoubleVector RotationAxis = DeltaAngularVelocity / RotationAngle;
-            const double HalfRotationAngle = 0.5 * RotationAngle;
-            const double SineHalfAngle = std::sin(HalfRotationAngle);
-            const FDoubleQuat RotationDeltaQuat(
-                RotationAxis.X * SineHalfAngle,
-                RotationAxis.Y * SineHalfAngle,
-                RotationAxis.Z * SineHalfAngle,
-                std::cos(HalfRotationAngle)
-            );
-            Orientation = RotationDeltaQuat * Orientation;
-            Orientation.Normalize();
-        }
+        const FDoubleVector RotationAxis = DeltaAngularVelocity / RotationAngle;
+        const double HalfRotationAngle = 0.5 * RotationAngle;
+        const double SineHalfAngle = std::sin(HalfRotationAngle);
+        const FDoubleQuat RotationDeltaQuat(
+            RotationAxis.X * SineHalfAngle,
+            RotationAxis.Y * SineHalfAngle,
+            RotationAxis.Z * SineHalfAngle,
+            std::cos(HalfRotationAngle)
+        );
+        Orientation = RotationDeltaQuat * Orientation;
+        Orientation.Normalize();
     }
     
     // 4) Finally set location and rotation.
@@ -135,6 +134,36 @@ void UKPhysicsMeshComponent::AddKLinearVelocity(const FDoubleVector& InLinearVel
 void UKPhysicsMeshComponent::AddKAngularVelocity(const FDoubleVector& InAngularVelocity)
 {
     AngularVelocityBucket += InAngularVelocity;
+}
+
+void UKPhysicsMeshComponent::ApplyFreeze(const double DeltaTime)
+{
+    constexpr double FreezeK = 10000000.0;
+    constexpr double FreezeC = 100000.0;
+    if (FreezeXOrientation)
+    {
+        const double XError = -1 * FDoubleQuat::GetTwistAngleRadians(Orientation, FDoubleVector::Forward());
+        const FDoubleVector Error = FDoubleVector(XError, 0.0, 0.0);
+        const FDoubleVector RelativeVelocity = FDoubleVector(AngularVelocity.X, 0.0, 0.0);
+        const double Inertia = FDoubleVector::Dot(FDoubleVector::Forward(), WorldInertiaTensor * FDoubleVector::Forward());
+        AddKAngularVelocity(FReverseEulerSpring::ComputeSpringVelocity(DeltaTime, Error, RelativeVelocity, Inertia, FreezeK, FreezeC));
+    }
+    if (FreezeYOrientation)
+    {
+        const double YError = -1 * FDoubleQuat::GetTwistAngleRadians(Orientation, FDoubleVector::Right());
+        const FDoubleVector Error = FDoubleVector(0.0, YError, 0.0);
+        const FDoubleVector RelativeVelocity = FDoubleVector(0.0, AngularVelocity.Y, 0.0);
+        const double Inertia = FDoubleVector::Dot(FDoubleVector::Right(), WorldInertiaTensor * FDoubleVector::Right());
+        AddKAngularVelocity(FReverseEulerSpring::ComputeSpringVelocity(DeltaTime, Error, RelativeVelocity, Inertia, FreezeK, FreezeC));
+    }
+    if (FreezeZOrientation)
+    {
+        const double ZError = -1 * FDoubleQuat::GetTwistAngleRadians(Orientation, FDoubleVector::Up());
+        const FDoubleVector Error = FDoubleVector(0.0, 0.0, ZError);
+        const FDoubleVector RelativeVelocity = FDoubleVector(0.0, 0.0, AngularVelocity.Z);
+        const double Inertia = FDoubleVector::Dot(FDoubleVector::Up(), WorldInertiaTensor * FDoubleVector::Up());
+        AddKAngularVelocity(FReverseEulerSpring::ComputeSpringVelocity(DeltaTime, Error, RelativeVelocity, Inertia, FreezeK, FreezeC));
+    }
 }
 
 void UKPhysicsMeshComponent::ResolveCollision(const FHitResult& Hit, const UPrimitiveComponent* PrimitiveComponent)

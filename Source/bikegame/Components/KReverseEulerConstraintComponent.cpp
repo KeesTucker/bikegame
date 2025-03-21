@@ -2,6 +2,7 @@
 
 #include "KPhysicsMeshComponent.h"
 #include "bikegame/Math/DoubleMath.h"
+#include "bikegame/Math/ReverseEulerSpring.h"
 #include "GameFramework/Actor.h"
 #include "Math/UnrealMathUtility.h"
 
@@ -73,8 +74,8 @@ void UKReverseEulerConstraintComponent::Init()
 	InitialAToBDisplacement = PosB - PosA;
 	InitialBToADisplacement = PosA - PosB;
 	InitialDistance = InitialAToBDisplacement.Size();
-	InitialAToBDirection = InitialAToBDisplacement.GetSafeNormal();
-	InitialBToADirection = InitialBToADisplacement.GetSafeNormal();
+	InitialAToBDirection = InitialAToBDisplacement.GetNormalized();
+	InitialBToADirection = InitialBToADisplacement.GetNormalized();
 	InitialAOrientation = FDoubleQuat(PhysicsComponentA->GetComponentQuat());
 	InitialBOrientation = FDoubleQuat(PhysicsComponentB->GetComponentQuat());
 }
@@ -105,7 +106,7 @@ void UKReverseEulerConstraintComponent::ApplyLinearSpring(const double DeltaTime
 	const double ErrorDistance = CurrentDistance - InitialDistance;
 
 	// Get the radial direction (if the distance is non-zero).
-	const FDoubleVector ErrorDirection = CurrentDisplacement.GetSafeNormal();
+	const FDoubleVector ErrorDirection = CurrentDisplacement.GetNormalized();
 
 	// Create an error vector that only corrects the distance.
 	const FDoubleVector ErrorDisplacement = ErrorDirection * ErrorDistance;
@@ -126,7 +127,7 @@ void UKReverseEulerConstraintComponent::ApplyLinearSpring(const double DeltaTime
 	const double EffectiveMass = MassA * MassB / (MassA + MassB);
 
 	// Compute the spring force correction based on the distance error.
-	const FDoubleVector VelocityCorrection = ComputeSpringVelocity(
+	const FDoubleVector VelocityCorrection = FReverseEulerSpring::ComputeSpringVelocity(
 		DeltaTime,
 		ErrorDisplacement,
 		SpringRelativeVelocity,
@@ -149,7 +150,7 @@ void UKReverseEulerConstraintComponent::ApplyAngularSpring(const double DeltaTim
 	const FDoubleVector SpringAngularVelocityA = GetAngularSpringVelocity(
 		DeltaTime,
 		InitialAToBDirection,
-		PosAToPosBDisplacement.GetSafeNormal(),
+		PosAToPosBDisplacement.GetNormalized(),
 		InitialAOrientation,
 		OrientationA,
 		PhysicsComponentB->GetKAngularVelocity() - PhysicsComponentA->GetKAngularVelocity()
@@ -157,7 +158,7 @@ void UKReverseEulerConstraintComponent::ApplyAngularSpring(const double DeltaTim
 	const FDoubleVector SpringAngularVelocityB = GetAngularSpringVelocity(
 		DeltaTime,
 		InitialBToADirection,
-		PosBToPosADisplacement.GetSafeNormal(),
+		PosBToPosADisplacement.GetNormalized(),
 		InitialBOrientation,
 		OrientationB,
 		PhysicsComponentA->GetKAngularVelocity() - PhysicsComponentB->GetKAngularVelocity()
@@ -166,8 +167,8 @@ void UKReverseEulerConstraintComponent::ApplyAngularSpring(const double DeltaTim
 	PhysicsComponentA->AddKAngularVelocity(-1 * SpringAngularVelocityA);
 	PhysicsComponentB->AddKAngularVelocity(-1 * SpringAngularVelocityB);
 
-	PhysicsComponentA->AddKLinearVelocity(FDoubleVector::Cross(-1 * SpringAngularVelocityB, PosAToPosBDisplacement));
-	PhysicsComponentB->AddKLinearVelocity(FDoubleVector::Cross(-1 * SpringAngularVelocityA, PosBToPosADisplacement));
+	//PhysicsComponentA->AddKLinearVelocity(FDoubleVector::Cross(-1 * SpringAngularVelocityB, PosAToPosBDisplacement));
+	//PhysicsComponentB->AddKLinearVelocity(FDoubleVector::Cross(-1 * SpringAngularVelocityA, PosBToPosADisplacement));
 
 	// TODO: This is all kind of wrong. We need to apply a torque to the opposite body due to the difference in
 	//  target vs actual direction. This torque then needs to be applied inversely to the current body. We shouldn't be
@@ -182,7 +183,7 @@ FDoubleVector UKReverseEulerConstraintComponent::GetAngularSpringVelocity(
 	const FDoubleQuat& Orientation,
 	const FDoubleVector& RelativeAngularVelocity) const
 {
-	const FDoubleVector TargetDirection = (Orientation * InitialOrientation.Inverse()).RotateVector(InitialDirection).GetSafeNormal();
+	const FDoubleVector TargetDirection = (Orientation * InitialOrientation.Inverse()).RotateVector(InitialDirection).GetNormalized();
 	FDoubleVector ErrorAxis;
 	double ErrorAngle;
 	FDoubleVector::NormalDifferenceToAxisAngle(TargetDirection, Direction, ErrorAxis, ErrorAngle);
@@ -193,75 +194,12 @@ FDoubleVector UKReverseEulerConstraintComponent::GetAngularSpringVelocity(
 	const double EffectiveInertia = 1.0 / ((AInertiaAlongErrorAxis > DSmallNumber ? 1.0 / AInertiaAlongErrorAxis : 0.0) + 
 									  (BInertiaAlongErrorAxis > DSmallNumber ? 1.0 / BInertiaAlongErrorAxis : 0.0));
 	
-	return ComputeAngularSpringVelocity(DeltaTime, ErrorAngularDisplacement, RelativeAngularVelocity, EffectiveInertia, AngularSpringConstant, AngularDampingConstant);
-}
-
-FDoubleVector UKReverseEulerConstraintComponent::ComputeSpringVelocity(
-	const double DeltaTime,
-	const FDoubleVector& ErrorDisplacement,
-	const FDoubleVector& RelativeVelocity,
-	const double EffectiveMass,
-	const double SpringK,
-	const double DampingC
-)
-{
-	// Construct the implicit integration system matrix:
-	// [ 1 + (DampingC*DeltaTime/EffectiveMass)    (SpringK*DeltaTime/EffectiveMass) ]
-	// [             -DeltaTime                              1                    ]
-	const double A11 = 1.0 + DampingC * DeltaTime / EffectiveMass;
-	const double A12 = SpringK * DeltaTime / EffectiveMass;
-	const double A21 = -DeltaTime;
-	constexpr double A22 = 1.0;
-
-	// Calculate the determinant.
-	const double Det = A11 * A22 - A12 * A21;
-	if (FMath::Abs(Det) < DSmallNumber)
-	{
-		// Avoid division by zero; no force is applied.
-		return FDoubleVector::Zero();
-	}
-
-	// Calculate the inverse for the velocity update (only the first row is needed).
-	const double Inv_A11 = A22 / Det;
-	const double Inv_A12 = -A12 / Det;
-
-	// Compute the new relative velocity using implicit integration.
-	const FDoubleVector NewRelativeVelocity = RelativeVelocity * Inv_A11 + ErrorDisplacement * Inv_A12;
-
-	return NewRelativeVelocity - RelativeVelocity;
-}
-
-FDoubleVector UKReverseEulerConstraintComponent::ComputeAngularSpringVelocity(
-	const double DeltaTime,
-	const FDoubleVector& ErrorAngularDisplacement,
-	const FDoubleVector& RelativeAngularVelocity,
-	const double EffectiveInertia,
-	const double AngularSpringK,
-	const double AngularDampingC
-)
-{
-	// Construct the implicit integration system matrix for angular quantities:
-	// [ 1 + (AngularDampingC*DeltaTime/EffectiveInertia)    (AngularSpringK*DeltaTime/EffectiveInertia) ]
-	// [                 -DeltaTime                                  1                                ]
-	const double A11 = 1.0 + AngularDampingC * DeltaTime / EffectiveInertia;
-	const double A12 = AngularSpringK * DeltaTime / EffectiveInertia;
-	const double A21 = -DeltaTime;
-	constexpr double A22 = 1.0;
-
-	// Calculate the determinant.
-	const double Det = A11 * A22 - A12 * A21;
-	if (FMath::Abs(Det) < DSmallNumber)
-	{
-		// Avoid division by zero; no torque is applied.
-		return FDoubleVector::Zero();
-	}
-
-	// Calculate the inverse for the velocity update (only the first row is needed).
-	const double Inv_A11 = A22 / Det;
-	const double Inv_A12 = -A12 / Det;
-
-	// Compute the new relative angular velocity using implicit integration.
-	const FDoubleVector NewRelativeAngularVelocity = RelativeAngularVelocity * Inv_A11 + ErrorAngularDisplacement * Inv_A12;
-
-	return NewRelativeAngularVelocity - RelativeAngularVelocity;
+	return FReverseEulerSpring::ComputeSpringVelocity(
+		DeltaTime,
+		ErrorAngularDisplacement,
+		RelativeAngularVelocity,
+		EffectiveInertia,
+		AngularSpringConstant,
+		AngularDampingConstant
+	);
 }

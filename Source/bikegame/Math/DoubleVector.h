@@ -2,8 +2,8 @@
 
 #include "CoreMinimal.h"
 #include <cmath>
-
 #include "DoubleMath.h"
+
 #include "DoubleVector.generated.h"
 
 USTRUCT()
@@ -94,10 +94,24 @@ struct FDoubleVector
         return std::abs(X) < DSmallNumber && std::abs(Y) < DSmallNumber && std::abs(Z) < DSmallNumber;
     }
 
-    FDoubleVector GetSafeNormal() const
+    void Normalize()
     {
-        const double SizeValue = Size();
-        return (SizeValue > 1e-8) ? (*this / SizeValue) : FDoubleVector(0.0, 0.0, 0.0);
+        if (const double Magnitude = Size(); Magnitude > DSmallNumber)
+        {
+            *this = *this / Magnitude;
+        }
+        else
+        {
+            *this = Zero();
+        }
+    }
+
+    // Get the normalized quaternion
+    FDoubleVector GetNormalized() const
+    {
+        FDoubleVector Result = *this;
+        Result.Normalize();
+        return Result;
     }
 
     static FDoubleVector Zero()
@@ -171,13 +185,13 @@ struct FDoubleVector
                 {
                     OutAxis = Right();
                 }
-                OutAxis = Cross(Normal1, OutAxis).GetSafeNormal();
+                OutAxis = Cross(Normal1, OutAxis).GetNormalized();
                 OutAngle = PI;
             }
         }
         else
         {
-            OutAxis = OutAxis.GetSafeNormal();
+            OutAxis.Normalize();
         }
     }
 };

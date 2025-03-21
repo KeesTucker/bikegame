@@ -1,8 +1,8 @@
 ﻿#pragma once
 
 #include <cmath>
-
 #include "DoubleVector.h"
+
 #include "DoubleMatrix3X3.generated.h"
 
 USTRUCT()

@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "DoubleMatrix3X3.h"
 #include "DoubleVector.h"
+
 #include "DoubleQuat.generated.h"
 
 USTRUCT()
@@ -35,10 +36,15 @@ struct FDoubleQuat
     {
         return FDoubleQuat(0.0, 0.0, 0.0, 1.0);
     }
+
+    explicit operator FQuat() const
+    {
+        return FQuat(static_cast<float>(X), static_cast<float>(Y), static_cast<float>(Z), static_cast<float>(W));
+    }
     
     void Normalize()
     {
-        if (const double Magnitude = std::sqrt(X * X + Y * Y + Z * Z + W * W); Magnitude > 0.0)
+        if (const double Magnitude = std::sqrt(X * X + Y * Y + Z * Z + W * W); Magnitude > DSmallNumber)
         {
             X /= Magnitude;
             Y /= Magnitude;
@@ -126,11 +132,6 @@ struct FDoubleQuat
             OutAxis = FDoubleVector(Norm.X / S, Norm.Y / S, Norm.Z / S);
         }
     }
-    
-    explicit operator FQuat() const
-    {
-        return FQuat(static_cast<float>(X), static_cast<float>(Y), static_cast<float>(Z), static_cast<float>(W));
-    }
 
     // Create a quaternion from an axis and angle (in radians)
     static FDoubleQuat FromAxisAndAngle(const FDoubleVector& Axis, const double AngleRad)
@@ -169,5 +170,40 @@ struct FDoubleQuat
             );
         }
         return A;
+    }
+    
+    static double GetTwistAngleRadians(const FDoubleQuat& In, const FDoubleVector& TwistAxis)
+    {
+        // Normalize the quaternion to avoid numerical issues.
+        const FDoubleQuat Norm = In.GetNormalized();
+    
+        // Project the quaternion's vector part (x,y,z) onto the twist axis.
+        // Note: The vector part is (X, Y, Z).
+        // Compute dot product between the quaternion's vector part and TwistAxis.
+        const double Dot = Norm.X * TwistAxis.X + Norm.Y * TwistAxis.Y + Norm.Z * TwistAxis.Z;
+    
+        // The projected vector is given by (TwistAxis * Dot)
+        const FDoubleVector Projected(TwistAxis.X * Dot, TwistAxis.Y * Dot, TwistAxis.Z * Dot);
+    
+        // Create a quaternion representing the twist.
+        // We keep the same scalar part (W) and the projected vector part.
+        FDoubleQuat TwistQuat(Projected.X, Projected.Y, Projected.Z, Norm.W);
+        TwistQuat.Normalize();
+
+        // Extract the twist angle using the relation: angle = 2 * acos(W)
+        double TwistAngle = 2.0 * std::acos(TwistQuat.W);
+
+        // Optionally, determine the sign of the angle.
+        // If the dot product between the twist vector part and TwistAxis is negative, reverse the sign.
+        const FDoubleVector TwistVector(TwistQuat.X, TwistQuat.Y, TwistQuat.Z);
+        if (
+            const double SignTest = TwistVector.X * TwistAxis.X + TwistVector.Y * TwistAxis.Y + TwistVector.Z * TwistAxis.Z;
+            SignTest < 0.0
+        )
+        {
+            TwistAngle = -TwistAngle;
+        }
+    
+        return TwistAngle;
     }
 };
