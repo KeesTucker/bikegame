@@ -57,16 +57,16 @@ protected:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
 	double AngularDampingFactor = 0;
-
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
-	bool FreezeXOrientation;
+	bool XAngularFreeze;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
-	bool FreezeYOrientation;
+	bool YAngularFreeze;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="KPhysics")
-	bool FreezeZOrientation;
+	bool ZAngularFreeze;
 	
 private:
-	void ApplyFreeze(double DeltaTime);
+	void ApplyFreeze();
 	void ResolveCollision(const FHitResult& Hit, const UPrimitiveComponent* PrimitiveComponent);
 
 	FDoubleVector Location;

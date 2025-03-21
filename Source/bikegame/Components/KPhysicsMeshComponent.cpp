@@ -7,8 +7,8 @@
 #include "GameFramework/Actor.h"
 #include "Components/PrimitiveComponent.h"
 
-UKPhysicsMeshComponent::UKPhysicsMeshComponent(): FreezeXOrientation(false), FreezeYOrientation(false),
-                                                  FreezeZOrientation(false)
+UKPhysicsMeshComponent::UKPhysicsMeshComponent(): XAngularFreeze(false), YAngularFreeze(false),
+                                                  ZAngularFreeze(false)
 {
 }
 
@@ -61,6 +61,8 @@ void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
     const double GravityZ = GetWorld()->GetGravityZ();
     LinearVelocity += FDoubleVector(0.0, 0.0, GravityZ) * DeltaTime;
 
+    ApplyFreeze();
+    
     // Update location using linear velocity
     Location += LinearVelocity * DeltaTime;
     
@@ -136,33 +138,34 @@ void UKPhysicsMeshComponent::AddKAngularVelocity(const FDoubleVector& InAngularV
     AngularVelocityBucket += InAngularVelocity;
 }
 
-void UKPhysicsMeshComponent::ApplyFreeze(const double DeltaTime)
+void UKPhysicsMeshComponent::ApplyFreeze()
 {
-    constexpr double FreezeK = 10000000.0;
-    constexpr double FreezeC = 100000.0;
-    if (FreezeXOrientation)
+    if (XAngularFreeze)
     {
-        const double XError = -1 * FDoubleQuat::GetTwistAngleRadians(Orientation, FDoubleVector::Forward());
+        AngularVelocity.X = 0.0;
+        /*const double XError = -1 * FDoubleQuat::GetTwistAngleRadians(Orientation, FDoubleVector::Forward());
         const FDoubleVector Error = FDoubleVector(XError, 0.0, 0.0);
         const FDoubleVector RelativeVelocity = FDoubleVector(AngularVelocity.X, 0.0, 0.0);
         const double Inertia = FDoubleVector::Dot(FDoubleVector::Forward(), WorldInertiaTensor * FDoubleVector::Forward());
-        AddKAngularVelocity(FReverseEulerSpring::ComputeSpringVelocity(DeltaTime, Error, RelativeVelocity, Inertia, FreezeK, FreezeC));
+        AddKAngularVelocity(FReverseEulerSpring::ComputeSpringVelocity(DeltaTime, Error, RelativeVelocity, Inertia, FreezeK, FreezeC));*/
     }
-    if (FreezeYOrientation)
+    if (YAngularFreeze)
     {
-        const double YError = -1 * FDoubleQuat::GetTwistAngleRadians(Orientation, FDoubleVector::Right());
+        AngularVelocity.Y = 0.0;
+        /*const double YError = -1 * FDoubleQuat::GetTwistAngleRadians(Orientation, FDoubleVector::Right());
         const FDoubleVector Error = FDoubleVector(0.0, YError, 0.0);
         const FDoubleVector RelativeVelocity = FDoubleVector(0.0, AngularVelocity.Y, 0.0);
         const double Inertia = FDoubleVector::Dot(FDoubleVector::Right(), WorldInertiaTensor * FDoubleVector::Right());
-        AddKAngularVelocity(FReverseEulerSpring::ComputeSpringVelocity(DeltaTime, Error, RelativeVelocity, Inertia, FreezeK, FreezeC));
+        AddKAngularVelocity(FReverseEulerSpring::ComputeSpringVelocity(DeltaTime, Error, RelativeVelocity, Inertia, FreezeK, FreezeC));*/
     }
-    if (FreezeZOrientation)
+    if (ZAngularFreeze)
     {
-        const double ZError = -1 * FDoubleQuat::GetTwistAngleRadians(Orientation, FDoubleVector::Up());
+        AngularVelocity.Z = 0.0;
+        /*const double ZError = -1 * FDoubleQuat::GetTwistAngleRadians(Orientation, FDoubleVector::Up());
         const FDoubleVector Error = FDoubleVector(0.0, 0.0, ZError);
         const FDoubleVector RelativeVelocity = FDoubleVector(0.0, 0.0, AngularVelocity.Z);
         const double Inertia = FDoubleVector::Dot(FDoubleVector::Up(), WorldInertiaTensor * FDoubleVector::Up());
-        AddKAngularVelocity(FReverseEulerSpring::ComputeSpringVelocity(DeltaTime, Error, RelativeVelocity, Inertia, FreezeK, FreezeC));
+        AddKAngularVelocity(FReverseEulerSpring::ComputeSpringVelocity(DeltaTime, Error, RelativeVelocity, Inertia, FreezeK, FreezeC));*/
     }
 }
 
