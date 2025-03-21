@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <cmath>
+
 #include "DoubleVector.h"
 #include "DoubleMatrix3X3.generated.h"
 
@@ -101,5 +102,18 @@ struct FDoubleMatrix3X3
             -(Mat.M[0][0] * Mat.M[2][1] - Mat.M[0][1] * Mat.M[2][0]) * InvDet,
             (Mat.M[0][0] * Mat.M[1][1] - Mat.M[0][1] * Mat.M[1][0]) * InvDet
         );
+    }
+
+    static FDoubleMatrix3X3 WorldInertiaTensor(const FVector& BodyInertiaTensor, const FDoubleMatrix3X3& RotationMatrix)
+    {
+        // Convert the local inertia tensor diagonal into a DMatrix3x3.
+        const FDoubleMatrix3X3 LocalInertia(
+            BodyInertiaTensor.X, 0.0, 0.0,
+            0.0, BodyInertiaTensor.Y, 0.0,
+            0.0, 0.0, BodyInertiaTensor.Z
+        );
+    
+        // Compute world inertia tensor.
+        return RotationMatrix * LocalInertia * Transpose(RotationMatrix);
     }
 };

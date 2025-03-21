@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "DoubleMatrix3X3.h"
 #include "DoubleVector.h"
+#include "DoubleQuat.generated.h"
 
 USTRUCT()
 struct FDoubleQuat
@@ -138,6 +139,16 @@ struct FDoubleQuat
         const double Sine = std::sin(HalfAngle);
         const double Cosine = std::cos(HalfAngle);
         return FDoubleQuat(Axis.X * Sine, Axis.Y * Sine, Axis.Z * Sine, Cosine);
+    }
+
+    // Create a quaternion from an axis and angle (in radians)
+    static FDoubleQuat FromNormalDifference(const FDoubleVector& Normal1, const FDoubleVector& Normal2)
+    {
+        FDoubleVector Axis;
+        double Angle;
+        FDoubleVector::NormalDifferenceToAxisAngle(Normal1, Normal2, Axis, Angle);
+
+        return FromAxisAndAngle(Axis, Angle);
     }
 
     // Spherical linear interpolation (SLERP)

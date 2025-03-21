@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include <cmath>
+
+#include "DoubleMath.h"
 #include "DoubleVector.generated.h"
 
 USTRUCT()
@@ -86,6 +88,11 @@ struct FDoubleVector
     {
         return std::sqrt(X * X + Y * Y + Z * Z);
     }
+    
+    bool IsNearlyZero() const
+    {
+        return std::abs(X) < DSmallNumber && std::abs(Y) < DSmallNumber && std::abs(Z) < DSmallNumber;
+    }
 
     FDoubleVector GetSafeNormal() const
     {
@@ -96,6 +103,21 @@ struct FDoubleVector
     static FDoubleVector Zero()
     {
         return FDoubleVector(0.0, 0.0, 0.0);
+    }
+
+    static FDoubleVector Forward()
+    {
+        return FDoubleVector(1, 0.0, 0.0);
+    }
+
+    static FDoubleVector Right()
+    {
+        return FDoubleVector(0.0, 1, 0.0);
+    }
+
+    static FDoubleVector Up()
+    {
+        return FDoubleVector(0.0, 0.0, 1);
     }
     
     static double Dot(const FDoubleVector& A, const FDoubleVector& B)
@@ -115,6 +137,48 @@ struct FDoubleVector
     static FDoubleVector Lerp(const FDoubleVector& A, const FDoubleVector& B, const double InAlpha)
     {
         return A + (B - A) * InAlpha;
+    }
+
+    static void NormalDifferenceToAxisAngle(const FDoubleVector& Normal1, const FDoubleVector& Normal2, FDoubleVector& OutAxis, double& OutAngle)
+    {
+        // Compute the dot product (cosine of the angle)
+        double Dot = FDoubleVector::Dot(Normal1, Normal2);
+
+        // Clamp the dot product to account for floating point precision issues
+        Dot = FMath::Clamp(Dot, -1.0, 1.0);
+
+        // Calculate the rotation angle between the two normals
+        OutAngle = FMath::Acos(Dot);
+
+        // Compute the rotation axis via cross product
+        OutAxis = Cross(Normal1, Normal2);
+
+        // Handle edge cases where the vectors are parallel or opposite
+        if (OutAxis.IsNearlyZero())
+        {
+            // If the normals are nearly identical, no rotation is needed
+            if (Dot > 0)
+            {
+                OutAxis = Up();
+                OutAngle = 0;
+                return;
+            }
+            else
+            {
+                // If the normals are opposite, choose an arbitrary orthogonal axis.
+                OutAxis = Up();
+                if (FMath::Abs(Normal1.Z) > 0.999f)
+                {
+                    OutAxis = Right();
+                }
+                OutAxis = Cross(Normal1, OutAxis).GetSafeNormal();
+                OutAngle = PI;
+            }
+        }
+        else
+        {
+            OutAxis = OutAxis.GetSafeNormal();
+        }
     }
 };
 

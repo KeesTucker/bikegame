@@ -47,19 +47,28 @@ protected:
 	
 private:
 	void Init();
-	static FDoubleVector ComputeSpringVelocity(double DeltaTime, const FDoubleVector& RelativeDisplacement,
+	void ApplyLinearSpring(double DeltaTime, const FDoubleVector& PosA, const FDoubleVector& PosB) const;
+	void ApplyAngularSpring(double DeltaTime, const FDoubleVector& PosA, const FDoubleVector& PosB,
+	                                 const FDoubleQuat& OrientationA, const FDoubleQuat& OrientationB) const;
+	FDoubleVector GetAngularSpringVelocity(double DeltaTime, const FDoubleVector& InitialDirection,
+	                                       const FDoubleVector& Direction,
+	                                       const FDoubleQuat& InitialOrientation, const FDoubleQuat& Orientation, const FDoubleVector& RelativeAngularVelocity) const;
+	static FDoubleVector ComputeSpringVelocity(double DeltaTime, const FDoubleVector& ErrorDisplacement,
 		const FDoubleVector& RelativeVelocity, double EffectiveMass, double SpringK, double DampingC);
+	static FDoubleVector ComputeAngularSpringVelocity(double DeltaTime, const FDoubleVector& ErrorAngularDisplacement,
+	                                           const FDoubleVector& RelativeAngularVelocity, double EffectiveInertia,
+	                                           double AngularSpringK, double AngularDampingC);
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY()
 	UKPhysicsMeshComponent* PhysicsComponentA;
-	UPROPERTY(EditAnywhere)
+	UPROPERTY()
 	UKPhysicsMeshComponent* PhysicsComponentB;
-	UPROPERTY(EditAnywhere)
-	FDoubleVector InitialRelativePosition;
-	UPROPERTY(EditAnywhere)
-	FDoubleQuat InitialRelativeOrientation;
-	UPROPERTY(EditAnywhere)
-	FDoubleVector InitialDirection;
-	UPROPERTY(EditAnywhere)
+	
+	FDoubleVector InitialAToBDisplacement;
+	FDoubleVector InitialBToADisplacement;
 	double InitialDistance;
+	FDoubleVector InitialAToBDirection;
+	FDoubleVector InitialBToADirection;
+	FDoubleQuat InitialAOrientation;
+	FDoubleQuat InitialBOrientation;
 };

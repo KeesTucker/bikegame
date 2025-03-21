@@ -28,6 +28,7 @@ public:
 	FDoubleQuat GetKOrientation() const;
 	FDoubleVector GetKLinearVelocity() const;
 	FDoubleVector GetKAngularVelocity() const;
+	FDoubleMatrix3X3 GetKWorldInertiaTensor() const;
 	void AddKLinearVelocity(const FDoubleVector& InLinearVelocity);
 	void AddKAngularVelocity(const FDoubleVector& InAngularVelocity);
 
@@ -61,7 +62,7 @@ protected:
 	bool Freeze;
 	
 private:
-	void ResolveCollision(FHitResult& Hit, UPrimitiveComponent* PrimitiveComponent);
+	void ResolveCollision(const FHitResult& Hit, const UPrimitiveComponent* PrimitiveComponent);
 
 	FDoubleVector Location;
 	FDoubleQuat Orientation;
@@ -71,4 +72,6 @@ private:
 
 	FDoubleVector LinearVelocityBucket;
 	FDoubleVector AngularVelocityBucket;
+
+	FDoubleMatrix3X3 WorldInertiaTensor;
 };
