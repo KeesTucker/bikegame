@@ -114,6 +114,16 @@ struct FDoubleVector
         return Result;
     }
 
+    FDoubleVector ProjectOnto(const FDoubleVector& Axis) const
+    {
+        // Normalize the axis so we can properly compute the projection
+        const FDoubleVector NormalizedAxis = Axis.GetNormalized();
+        // Compute the scalar projection (the dot product)
+        const double ScalarProjection = Dot(*this, NormalizedAxis);
+        // Return the vector projection along the axis
+        return NormalizedAxis * ScalarProjection;
+    }
+    
     static FDoubleVector Zero()
     {
         return FDoubleVector(0.0, 0.0, 0.0);

@@ -3,7 +3,7 @@
 #include "bikegame/Math/DoubleMath.h"
 #include "bikegame/Math/DoubleMatrix3X3.h"
 #include "bikegame/Math/DoubleQuat.h"
-#include "bikegame/Math/ReverseEulerSpring.h"
+#include "bikegame/Math/KSpring.h"
 #include "GameFramework/Actor.h"
 #include "Components/PrimitiveComponent.h"
 
@@ -94,7 +94,7 @@ void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
     SetWorldLocationAndRotation(FVector(Location), FQuat(Orientation), true, &TransformationHitResult);
     if (TransformationHitResult.bBlockingHit)
     {
-        ResolveCollision(TransformationHitResult, this);
+        ResolveCollision(DeltaTime, TransformationHitResult);
     }
 }
 
@@ -126,6 +126,26 @@ FDoubleVector UKPhysicsMeshComponent::GetKAngularVelocity() const
 FDoubleMatrix3X3 UKPhysicsMeshComponent::GetKWorldInertiaTensor() const
 {
     return WorldInertiaTensor;
+}
+
+void UKPhysicsMeshComponent::SetKLocation(const FDoubleVector& InLocation)
+{
+    Location = InLocation;
+}
+
+void UKPhysicsMeshComponent::SetKOrientation(const FDoubleQuat& InOrientation)
+{
+    Orientation = InOrientation;
+}
+
+void UKPhysicsMeshComponent::SetKLinearVelocity(const FDoubleVector& InLinearVelocity)
+{
+    LinearVelocity = InLinearVelocity;
+}
+
+void UKPhysicsMeshComponent::SetKAngularVelocity(const FDoubleVector& InAngularVelocity)
+{
+    AngularVelocity = InAngularVelocity;
 }
 
 void UKPhysicsMeshComponent::AddKLinearVelocity(const FDoubleVector& InLinearVelocity)
@@ -169,9 +189,9 @@ void UKPhysicsMeshComponent::ApplyFreeze()
     }
 }
 
-void UKPhysicsMeshComponent::ResolveCollision(const FHitResult& Hit, const UPrimitiveComponent* PrimitiveComponent)
+void UKPhysicsMeshComponent::ResolveCollision(const double DeltaTime, const FHitResult& Hit)
 {
-    const FDoubleVector CenterOfMass(PrimitiveComponent->GetCenterOfMass());
+    const FDoubleVector CenterOfMass(GetCenterOfMass());
 
     const FDoubleVector ContactImpactPoint(Hit.ImpactPoint);
     const FDoubleVector ContactOffset = ContactImpactPoint - CenterOfMass;

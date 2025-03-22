@@ -2,7 +2,7 @@
 
 #include "KPhysicsMeshComponent.h"
 #include "bikegame/Math/DoubleMath.h"
-#include "bikegame/Math/ReverseEulerSpring.h"
+#include "bikegame/Math/KSpring.h"
 #include "GameFramework/Actor.h"
 #include "Math/UnrealMathUtility.h"
 
@@ -127,7 +127,7 @@ void UKReverseEulerConstraintComponent::ApplyLinearSpring(const double DeltaTime
 	const double EffectiveMass = MassA * MassB / (MassA + MassB);
 
 	// Compute the spring force correction based on the distance error.
-	const FDoubleVector VelocityCorrection = FReverseEulerSpring::ComputeSpringVelocity(
+	const FDoubleVector VelocityCorrection = FKSpring::ComputeReverseEulerSpringVelocityCorrection(
 		DeltaTime,
 		ErrorDisplacement,
 		SpringRelativeVelocity,
@@ -194,7 +194,7 @@ FDoubleVector UKReverseEulerConstraintComponent::GetAngularSpringVelocity(
 	const double EffectiveInertia = 1.0 / ((AInertiaAlongErrorAxis > DSmallNumber ? 1.0 / AInertiaAlongErrorAxis : 0.0) + 
 									  (BInertiaAlongErrorAxis > DSmallNumber ? 1.0 / BInertiaAlongErrorAxis : 0.0));
 	
-	return FReverseEulerSpring::ComputeSpringVelocity(
+	return FKSpring::ComputeReverseEulerSpringVelocityCorrection(
 		DeltaTime,
 		ErrorAngularDisplacement,
 		RelativeAngularVelocity,

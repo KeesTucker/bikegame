@@ -1,14 +1,14 @@
 ﻿#pragma once
 #include "DoubleVector.h"
 
-#include "ReverseEulerSpring.generated.h"
+#include "KSpring.generated.h"
 
 USTRUCT()
-struct FReverseEulerSpring
+struct FKSpring
 {
 	GENERATED_BODY()
 	
-	static FDoubleVector ComputeSpringVelocity(
+	static FDoubleVector ComputeReverseEulerSpringVelocityCorrection(
 		const double DeltaTime,
 		const FDoubleVector& Error,
 		const FDoubleVector& Velocity,
@@ -41,5 +41,28 @@ struct FReverseEulerSpring
 		const FDoubleVector NewRelativeVelocity = Velocity * Inv_A11 + Error * Inv_A12;
 
 		return NewRelativeVelocity - Velocity;
+	}
+	
+	static FDoubleVector ComputeExplicitSpringVelocityCorrection(
+	const double DeltaTime,
+	const FDoubleVector& Error,
+	const FDoubleVector& Velocity,
+	const double Inertia,
+	const double SpringK,
+	const double DampingC
+)
+	{
+		// Spring force is proportional to -K * displacement (Error).
+		const FDoubleVector SpringForce = -SpringK * Error;
+
+		// Damping force is proportional to -C * velocity.
+		const FDoubleVector DampingForce = -DampingC * Velocity;
+
+		// Net acceleration = (Spring + Damping) / Inertia
+		const FDoubleVector Acceleration = (SpringForce + DampingForce) / Inertia;
+
+		// Explicit Euler velocity update: v_new = v_old + a * Δt
+		// Here we just return the change (correction), i.e. (v_new - v_old).
+		return Acceleration * DeltaTime;
 	}
 };
