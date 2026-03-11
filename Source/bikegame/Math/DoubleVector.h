@@ -106,7 +106,6 @@ struct FDoubleVector
         }
     }
 
-    // Get the normalized quaternion
     FDoubleVector GetNormalized() const
     {
         FDoubleVector Result = *this;
@@ -116,11 +115,8 @@ struct FDoubleVector
 
     FDoubleVector ProjectOnto(const FDoubleVector& Axis) const
     {
-        // Normalize the axis so we can properly compute the projection
         const FDoubleVector NormalizedAxis = Axis.GetNormalized();
-        // Compute the scalar projection (the dot product)
         const double ScalarProjection = Dot(*this, NormalizedAxis);
-        // Return the vector projection along the axis
         return NormalizedAxis * ScalarProjection;
     }
     
@@ -165,16 +161,12 @@ struct FDoubleVector
 
     static void NormalDifferenceToAxisAngle(const FDoubleVector& Normal1, const FDoubleVector& Normal2, FDoubleVector& OutAxis, double& OutAngle)
     {
-        // Compute the dot product (cosine of the angle)
         double Dot = FDoubleVector::Dot(Normal1, Normal2);
 
-        // Clamp the dot product to account for floating point precision issues
+        // Clamp to account for floating point precision issues
         Dot = FMath::Clamp(Dot, -1.0, 1.0);
 
-        // Calculate the rotation angle between the two normals
         OutAngle = FMath::Acos(Dot);
-
-        // Compute the rotation axis via cross product
         OutAxis = Cross(Normal1, Normal2);
 
         // Handle edge cases where the vectors are parallel or opposite

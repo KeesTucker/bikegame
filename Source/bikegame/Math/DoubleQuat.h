@@ -57,7 +57,6 @@ struct FDoubleQuat
         }
     }
 
-    // Get the normalized quaternion
     FDoubleQuat GetNormalized() const
     {
         FDoubleQuat Result = *this;
@@ -65,7 +64,6 @@ struct FDoubleQuat
         return Result;
     }
 
-    // Quaternion multiplication
     FDoubleQuat operator*(const FDoubleQuat& Other) const
     {
         return FDoubleQuat(
@@ -76,13 +74,11 @@ struct FDoubleQuat
         );
     }
 
-    // Quaternion inverse
     FDoubleQuat Inverse() const
     {
         return FDoubleQuat(-X, -Y, -Z, W);
     }
 
-    // Rotate a vector by this quaternion
     FDoubleVector RotateVector(const FDoubleVector& Vector) const
     {
         const FDoubleQuat VectorQuat(Vector.X, Vector.Y, Vector.Z, 0.0);
@@ -92,7 +88,6 @@ struct FDoubleQuat
 
     FDoubleMatrix3X3 ToRotationMatrix() const
     {
-        // Ensure the quaternion is normalized.
         const FDoubleQuat Norm = GetNormalized();
 
         const double Xx = Norm.X * Norm.X;
@@ -114,15 +109,11 @@ struct FDoubleQuat
 
     void ToAxisAndAngle(FDoubleVector& OutAxis, double& OutAngle) const
     {
-        // First, ensure the quaternion is normalized.
         const FDoubleQuat Norm = GetNormalized();
-
-        // The rotation angle (in radians) is 2 * acos(w)
         OutAngle = 2.0 * std::acos(Norm.W);
-        
-        // Compute the scale factor for the axis.
-        // If scale factor is close to zero, the axis direction is not well-defined.
-        // In that case, we arbitrarily choose (1,0,0) as the axis.
+
+        // If scale factor is close to zero, the axis direction is not well-defined;
+        // arbitrarily choose (1,0,0) as the axis.
         if (const double S = std::sqrt(1.0 - Norm.W * Norm.W); S < 1e-8)
         {
             OutAxis = FDoubleVector(1.0, 0.0, 0.0); 
@@ -133,7 +124,6 @@ struct FDoubleQuat
         }
     }
 
-    // Create a quaternion from an axis and angle (in radians)
     static FDoubleQuat FromAxisAndAngle(const FDoubleVector& Axis, const double AngleRad)
     {
         const double HalfAngle = AngleRad * 0.5;
@@ -142,7 +132,6 @@ struct FDoubleQuat
         return FDoubleQuat(Axis.X * Sine, Axis.Y * Sine, Axis.Z * Sine, Cosine);
     }
 
-    // Create a quaternion from an axis and angle (in radians)
     static FDoubleQuat FromNormalDifference(const FDoubleVector& Normal1, const FDoubleVector& Normal2)
     {
         FDoubleVector Axis;
@@ -152,7 +141,6 @@ struct FDoubleQuat
         return FromAxisAndAngle(Axis, Angle);
     }
 
-    // Spherical linear interpolation (SLERP)
     static FDoubleQuat Slerp(const FDoubleQuat& A, const FDoubleQuat& B, double Alpha)
     {
         const double Dot = A.X * B.X + A.Y * B.Y + A.Z * B.Z + A.W * B.W;
@@ -174,15 +162,10 @@ struct FDoubleQuat
     
     static double GetTwistAngleRadians(const FDoubleQuat& In, const FDoubleVector& TwistAxis)
     {
-        // Normalize the quaternion to avoid numerical issues.
         const FDoubleQuat Norm = In.GetNormalized();
-    
-        // Project the quaternion's vector part (x,y,z) onto the twist axis.
-        // Note: The vector part is (X, Y, Z).
-        // Compute dot product between the quaternion's vector part and TwistAxis.
+
+        // Project the quaternion's vector part onto the twist axis.
         const double Dot = Norm.X * TwistAxis.X + Norm.Y * TwistAxis.Y + Norm.Z * TwistAxis.Z;
-    
-        // The projected vector is given by (TwistAxis * Dot)
         const FDoubleVector Projected(TwistAxis.X * Dot, TwistAxis.Y * Dot, TwistAxis.Z * Dot);
     
         // Create a quaternion representing the twist.

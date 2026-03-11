@@ -106,14 +106,11 @@ struct FDoubleMatrix3X3
 
     static FDoubleMatrix3X3 WorldInertiaTensor(const FVector& BodyInertiaTensor, const FDoubleMatrix3X3& RotationMatrix)
     {
-        // Convert the local inertia tensor diagonal into a DMatrix3x3.
         const FDoubleMatrix3X3 LocalInertia(
             BodyInertiaTensor.X, 0.0, 0.0,
             0.0, BodyInertiaTensor.Y, 0.0,
             0.0, 0.0, BodyInertiaTensor.Z
         );
-    
-        // Compute world inertia tensor.
         return RotationMatrix * LocalInertia * Transpose(RotationMatrix);
     }
 };

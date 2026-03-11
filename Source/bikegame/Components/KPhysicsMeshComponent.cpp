@@ -47,26 +47,21 @@ void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
     const FDoubleVector InitLocation = Location;
     const FDoubleQuat InitOrientation = Orientation;
     
-    // Apply external velocities
     LinearVelocity += LinearVelocityBucket;
     LinearVelocityBucket = FDoubleVector::Zero();
     AngularVelocity += AngularVelocityBucket;
     AngularVelocityBucket = FDoubleVector::Zero();
     
-    // Apply damping.
     LinearVelocity *= FMath::Exp(-LinearDampingFactor * DeltaTime);
     AngularVelocity *= FMath::Exp(-AngularDampingFactor * DeltaTime);
 
-    // Apply gravity.
     const double GravityZ = GetWorld()->GetGravityZ();
     LinearVelocity += FDoubleVector(0.0, 0.0, GravityZ) * DeltaTime;
 
     ApplyFreeze();
     
-    // Update location using linear velocity
     Location += LinearVelocity * DeltaTime;
-    
-    // Update orientation using angular velocity.
+
     const FDoubleVector DeltaAngularVelocity = AngularVelocity * DeltaTime;
 
     if (const double RotationAngle = DeltaAngularVelocity.Size(); RotationAngle > DSmallNumber)
@@ -84,7 +79,6 @@ void UKPhysicsMeshComponent::PhysicsTick(const double DeltaTime)
         Orientation.Normalize();
     }
     
-    // 4) Finally set location and rotation.
     // We first move the component to the original location and orientation (this stops parent movement effecting the sweep,
     // and allows us to avoid using absolute movement which is painful to deal with setup).
     SetWorldLocationAndRotation(FVector(InitLocation), FQuat(InitOrientation));
@@ -163,29 +157,14 @@ void UKPhysicsMeshComponent::ApplyFreeze()
     if (XAngularFreeze)
     {
         AngularVelocity.X = 0.0;
-        /*const double XError = -1 * FDoubleQuat::GetTwistAngleRadians(Orientation, FDoubleVector::Forward());
-        const FDoubleVector Error = FDoubleVector(XError, 0.0, 0.0);
-        const FDoubleVector RelativeVelocity = FDoubleVector(AngularVelocity.X, 0.0, 0.0);
-        const double Inertia = FDoubleVector::Dot(FDoubleVector::Forward(), WorldInertiaTensor * FDoubleVector::Forward());
-        AddKAngularVelocity(FReverseEulerSpring::ComputeSpringVelocity(DeltaTime, Error, RelativeVelocity, Inertia, FreezeK, FreezeC));*/
     }
     if (YAngularFreeze)
     {
         AngularVelocity.Y = 0.0;
-        /*const double YError = -1 * FDoubleQuat::GetTwistAngleRadians(Orientation, FDoubleVector::Right());
-        const FDoubleVector Error = FDoubleVector(0.0, YError, 0.0);
-        const FDoubleVector RelativeVelocity = FDoubleVector(0.0, AngularVelocity.Y, 0.0);
-        const double Inertia = FDoubleVector::Dot(FDoubleVector::Right(), WorldInertiaTensor * FDoubleVector::Right());
-        AddKAngularVelocity(FReverseEulerSpring::ComputeSpringVelocity(DeltaTime, Error, RelativeVelocity, Inertia, FreezeK, FreezeC));*/
     }
     if (ZAngularFreeze)
     {
         AngularVelocity.Z = 0.0;
-        /*const double ZError = -1 * FDoubleQuat::GetTwistAngleRadians(Orientation, FDoubleVector::Up());
-        const FDoubleVector Error = FDoubleVector(0.0, 0.0, ZError);
-        const FDoubleVector RelativeVelocity = FDoubleVector(0.0, 0.0, AngularVelocity.Z);
-        const double Inertia = FDoubleVector::Dot(FDoubleVector::Up(), WorldInertiaTensor * FDoubleVector::Up());
-        AddKAngularVelocity(FReverseEulerSpring::ComputeSpringVelocity(DeltaTime, Error, RelativeVelocity, Inertia, FreezeK, FreezeC));*/
     }
 }
 
@@ -207,7 +186,6 @@ void UKPhysicsMeshComponent::ResolveCollision(const double DeltaTime, const FHit
 
     const FDoubleMatrix3X3 WorldInertiaTensorInverse = FDoubleMatrix3X3::Inverse(WorldInertiaTensor);
     
-    // 1) Normal collision impulse.
     if (RelativeNormalVelocity < -DSmallNumber)
     {
         const FDoubleVector LeverArmCrossNormal = FDoubleVector::Cross(ContactOffset, HitNormal);
@@ -224,7 +202,6 @@ void UKPhysicsMeshComponent::ResolveCollision(const double DeltaTime, const FHit
         const FDoubleVector AngularVelocityDelta = WorldInertiaTensorInverse * AngularTorque;
         AngularVelocity += AngularVelocityDelta;
         
-        // 2) Friction impulse.
         ContactRelativeVelocity = LinearVelocity + FDoubleVector::Cross(AngularVelocity, ContactOffset);
         const FDoubleVector PostCollisionNormalVelocity = HitNormal * FDoubleVector::Dot(ContactRelativeVelocity, HitNormal);
         const FDoubleVector PostCollisionTangentialVelocity = ContactRelativeVelocity - PostCollisionNormalVelocity;
@@ -243,20 +220,17 @@ void UKPhysicsMeshComponent::ResolveCollision(const double DeltaTime, const FHit
 
         double FinalFrictionImpulseMagnitude;
 
-        // Determine whether to use static or dynamic friction
         if (std::abs(CandidateFrictionImpulse) <= MaxStaticImpulse)
         {
             FinalFrictionImpulseMagnitude = CandidateFrictionImpulse;
         }
         else
         {
-            // Apply dynamic friction opposite to the tangential direction
             FinalFrictionImpulseMagnitude = -MaxDynamicImpulse;
         }
         
         const FDoubleVector FrictionImpulse = FrictionDirection * FinalFrictionImpulseMagnitude;
 
-        // Apply the friction impulse to linear and angular velocities
         LinearVelocity += FrictionImpulse / Mass;
         
         const FDoubleVector FrictionAngularTorque = FDoubleVector::Cross(ContactOffset, FrictionImpulse);

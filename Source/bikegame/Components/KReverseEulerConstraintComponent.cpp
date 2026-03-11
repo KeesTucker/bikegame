@@ -98,20 +98,12 @@ void UKReverseEulerConstraintComponent::PhysicsTick(const double DeltaTime)
 
 void UKReverseEulerConstraintComponent::ApplyLinearSpring(const double DeltaTime, const FDoubleVector& PosA, const FDoubleVector& PosB) const
 {
-	// Get the current displacement vector and its magnitude.
 	const FDoubleVector CurrentDisplacement = PosB - PosA;
 	const double CurrentDistance = CurrentDisplacement.Size();
-
-	// Calculate the error in distance.
 	const double ErrorDistance = CurrentDistance - InitialDistance;
-
-	// Get the radial direction (if the distance is non-zero).
 	const FDoubleVector ErrorDirection = CurrentDisplacement.GetNormalized();
-
-	// Create an error vector that only corrects the distance.
 	const FDoubleVector ErrorDisplacement = ErrorDirection * ErrorDistance;
-	
-	// Retrieve velocities.
+
 	const FDoubleVector VelA = PhysicsComponentA->GetKLinearVelocity();
 	const FDoubleVector VelB = PhysicsComponentB->GetKLinearVelocity();
 	const FDoubleVector RelativeVelocity = VelB - VelA;
@@ -119,14 +111,10 @@ void UKReverseEulerConstraintComponent::ApplyLinearSpring(const double DeltaTime
 
 	DrawDebugDirectionalArrow(GetWorld(), FVector(PosA), FVector(PosA + SpringRelativeVelocity), 100.0f, FColor::Blue);
 
-	// Retrieve masses.
 	const double MassA = PhysicsComponentA->GetKMass();
 	const double MassB = PhysicsComponentB->GetKMass();
-
-	// Calculate the effective mass.
 	const double EffectiveMass = MassA * MassB / (MassA + MassB);
 
-	// Compute the spring force correction based on the distance error.
 	const FDoubleVector VelocityCorrection = FKSpring::ComputeReverseEulerSpringVelocityCorrection(
 		DeltaTime,
 		ErrorDisplacement,
@@ -135,8 +123,7 @@ void UKReverseEulerConstraintComponent::ApplyLinearSpring(const double DeltaTime
 		LinearSpringConstant,
 		LinearDampingConstant
 	);
-    
-	// Apply equal and opposite corrections.
+
 	PhysicsComponentA->AddKLinearVelocity(-1 * VelocityCorrection);
 	PhysicsComponentB->AddKLinearVelocity(VelocityCorrection);
 }
@@ -166,9 +153,6 @@ void UKReverseEulerConstraintComponent::ApplyAngularSpring(const double DeltaTim
 	
 	PhysicsComponentA->AddKAngularVelocity(-1 * SpringAngularVelocityA);
 	PhysicsComponentB->AddKAngularVelocity(-1 * SpringAngularVelocityB);
-
-	//PhysicsComponentA->AddKLinearVelocity(FDoubleVector::Cross(-1 * SpringAngularVelocityB, PosAToPosBDisplacement));
-	//PhysicsComponentB->AddKLinearVelocity(FDoubleVector::Cross(-1 * SpringAngularVelocityA, PosBToPosADisplacement));
 
 	// TODO: This is all kind of wrong. We need to apply a torque to the opposite body due to the difference in
 	//  target vs actual direction. This torque then needs to be applied inversely to the current body. We shouldn't be

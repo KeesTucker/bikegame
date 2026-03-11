@@ -9,11 +9,6 @@
 
 class UKPhysicsMeshComponent;
 
-/**
- * UReverseEulerConstraintComponent applies a spring/damper constraint between two UKPhysicsMeshComponents.
- * It computes the relative displacement and velocity, calculates an effective mass, and applies equal and
- * opposite forces to each component using reverse Euler integration.
- */
 UCLASS(ClassGroup = (Physics), meta = (BlueprintSpawnableComponent))
 class BIKEGAME_API UKReverseEulerConstraintComponent : public UActorComponent, public IKPhysicsTickInterface
 {

@@ -1,6 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "bikegame/Settings/KPhysicsSettings.h"
@@ -15,18 +13,12 @@ public:
 	virtual void PhysicsTick(double DeltaTime) = 0;
 };
 
-/**
- * UKPhysicsTickSubsystem is a custom world subsystem that facilitates per-frame physical
- * substeps and interpolation for registered components implementing the IKPhysicsTickInterface.
- * It is designed for scenarios where precise physics updates are required.
- */
 UCLASS()
 class BIKEGAME_API UKPhysicsTickSubsystem : public UWorldSubsystem, public FTickableGameObject
 {
 	GENERATED_BODY()
 
 public:
-	// List of components that have subscribed to the custom tick.
 	TArray<IKPhysicsTickInterface*> RegisteredComponents;
 
 	virtual void Tick(const float DeltaTime) override
@@ -38,14 +30,12 @@ public:
 
 		const double NumHzPhysics = GetDefault<UKPhysicsSettings>()->NumHzPhysics;
 		
-		// Determine substeps for more accurate simulation.
 		const double TargetSubstepDeltaTime = 1.0 / NumHzPhysics;
 		int DynamicSubsteps = static_cast<int>(std::ceil(DeltaTime / TargetSubstepDeltaTime));
 		DynamicSubsteps = FMath::Max(1, DynamicSubsteps);
 		// Note that this will technically be wrong for the last substep if TargetSubstepDeltaTime doesn't divide cleanly into DeltaTime
 		const double SubstepDeltaTime = DeltaTime / static_cast<double>(DynamicSubsteps);
 
-		// For each substep, call the custom tick function on each component.
 		for (int i = 0; i < DynamicSubsteps; ++i)
 		{
 			for (IKPhysicsTickInterface* Comp : RegisteredComponents)
@@ -63,7 +53,6 @@ public:
 		RETURN_QUICK_DECLARE_CYCLE_STAT(UCustomPhysicsTickSubsystem, STATGROUP_Tickables);
 	}
 
-	// Methods to register/unregister components.
 	void RegisterComponent(IKPhysicsTickInterface* Component)
 	{
 		RegisteredComponents.AddUnique(Component);
