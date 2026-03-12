@@ -12,4 +12,7 @@ class BIKEGAME_API UKPhysicsSettings : public UDeveloperSettings
 public:
 	UPROPERTY(EditAnywhere, config, Category = "KPhysics")
 	float NumHzPhysics = 1000.0;
+
+	UPROPERTY(EditAnywhere, config, Category = "KPhysics|Diagnostics")
+	bool bShowCollisionDiagnostics = false;
 };

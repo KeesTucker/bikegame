@@ -8,6 +8,9 @@ struct FKSpring
 {
 	GENERATED_BODY()
 	
+	// Implicit spring solver. Discretises the damped harmonic oscillator (mx'' + cx' + kx = 0) as a
+	// 2x2 system over [v, x] and solves it exactly for this timestep. Unconditionally stable so you
+	// can crank spring constants without it blowing up, unlike the explicit version.
 	static FDoubleVector ComputeReverseEulerSpringVelocityCorrection(
 		const double DeltaTime,
 		const FDoubleVector& Error,
@@ -40,7 +43,9 @@ struct FKSpring
 
 		return NewRelativeVelocity - Velocity;
 	}
-	
+
+	// Explicit spring, just F=ma discretised directly. Goes unstable if stiffness or timestep gets too
+	// large so don't push it. Fine for soft stuff like suspension.
 	static FDoubleVector ComputeExplicitSpringVelocityCorrection(
 	const double DeltaTime,
 	const FDoubleVector& Error,

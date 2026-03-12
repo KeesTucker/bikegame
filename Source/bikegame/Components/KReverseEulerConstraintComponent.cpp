@@ -5,6 +5,8 @@
 #include "bikegame/Math/KSpring.h"
 #include "GameFramework/Actor.h"
 #include "Math/UnrealMathUtility.h"
+#include "DrawDebugHelpers.h"
+#include "bikegame/Settings/KPhysicsSettings.h"
 
 UKReverseEulerConstraintComponent::UKReverseEulerConstraintComponent():
 	PhysicsComponentA(nullptr), PhysicsComponentB(nullptr), InitialDistance(0)
@@ -109,7 +111,10 @@ void UKReverseEulerConstraintComponent::ApplyLinearSpring(const double DeltaTime
 	const FDoubleVector RelativeVelocity = VelB - VelA;
 	const FDoubleVector SpringRelativeVelocity = FDoubleVector::Dot(RelativeVelocity, ErrorDirection) * ErrorDirection;
 
-	DrawDebugDirectionalArrow(GetWorld(), FVector(PosA), FVector(PosA + SpringRelativeVelocity), 100.0f, FColor::Blue);
+	if (GetDefault<UKPhysicsSettings>()->bShowCollisionDiagnostics)
+	{
+		DrawDebugDirectionalArrow(GetWorld(), FVector(PosA), FVector(PosA + SpringRelativeVelocity), 10.0f, FColor::Blue, false, 0.3f, 0.f, 2.0f);
+	}
 
 	const double MassA = PhysicsComponentA->GetKMass();
 	const double MassB = PhysicsComponentB->GetKMass();
@@ -173,9 +178,12 @@ FDoubleVector UKReverseEulerConstraintComponent::GetAngularSpringVelocity(
 	FDoubleVector::NormalDifferenceToAxisAngle(TargetDirection, Direction, ErrorAxis, ErrorAngle);
 	const FDoubleVector ErrorAngularDisplacement = ErrorAxis * ErrorAngle;
 
+	// Project the inertia tensor onto the error axis to get the scalar inertia resisting this rotation.
+	// Comes from the rotational KE integral projected onto an axis. Then combine both bodies like
+	// resistors in parallel to get the effective inertia.
 	const double AInertiaAlongErrorAxis = FDoubleVector::Dot(ErrorAxis, PhysicsComponentA->GetKWorldInertiaTensor() * ErrorAxis);
 	const double BInertiaAlongErrorAxis = FDoubleVector::Dot(ErrorAxis, PhysicsComponentB->GetKWorldInertiaTensor() * ErrorAxis);
-	const double EffectiveInertia = 1.0 / ((AInertiaAlongErrorAxis > DSmallNumber ? 1.0 / AInertiaAlongErrorAxis : 0.0) + 
+	const double EffectiveInertia = 1.0 / ((AInertiaAlongErrorAxis > DSmallNumber ? 1.0 / AInertiaAlongErrorAxis : 0.0) +
 									  (BInertiaAlongErrorAxis > DSmallNumber ? 1.0 / BInertiaAlongErrorAxis : 0.0));
 	
 	return FKSpring::ComputeReverseEulerSpringVelocityCorrection(

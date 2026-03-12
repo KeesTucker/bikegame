@@ -1,6 +1,8 @@
 ﻿#include "KWheelColliderComponent.h"
 
 #include "bikegame/Math/KSpring.h"
+#include "bikegame/Settings/KPhysicsSettings.h"
+#include "DrawDebugHelpers.h"
 
 
 void UKWheelColliderComponent::BeginPlay()
@@ -23,7 +25,10 @@ void UKWheelColliderComponent::ResolveCollision(const double DeltaTime, const FH
 	const FDoubleVector GroundNormal = GroundVector.GetNormalized();
 	const double GroundDistance = GroundVector.Size();
 	const FDoubleVector Deflection = (GroundDistance - TotalWheelRadius) * GroundNormal;
-	DrawDebugDirectionalArrow(GetWorld(), FVector(GetKLocation()), FVector(GetKLocation()) + FVector(Deflection), 100.0f, FColor::Blue, false, 0.1f, 0.f, 0.5f);
+	if (GetDefault<UKPhysicsSettings>()->bShowCollisionDiagnostics)
+	{
+		DrawDebugDirectionalArrow(GetWorld(), FVector(GetKLocation()), FVector(GetKLocation()) + FVector(Deflection), 10.0f, FColor::Blue, false, 0.3f, 0.f, 2.0f);
+	}
 	const FDoubleVector NormalVelocity = -1 * FKSpring::ComputeExplicitSpringVelocityCorrection(
 		DeltaTime,
 		Deflection,
